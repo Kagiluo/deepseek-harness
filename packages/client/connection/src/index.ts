@@ -87,6 +87,12 @@ export const Config: z<ConnectionConfig> = z.object({
  * keys, or key state — and a LAN client's model picker legitimately needs it.
  */
 const PRIVILEGED_METHODS = new Set([
+  // Fork patch (Kagiluo/deepseek-harness): settings.describe/update/replace/
+  // mutate, credentials.describe/set/unset, and llm.discoverModels were
+  // removed from this set so the web Models page works from remote browsers
+  // (deployment is single-user behind nginx basic auth + HTTPS). Keep the
+  // host-desktop actions (pickDirectory/openPath/openDocument) and the
+  // agentPreset roster pinned.
   // A preset composition names the plugins a session runs, so reading one is
   // reconnaissance; copy and remove rearrange what the deployment offers, and
   // openDocument drives the host desktop — all more than the roster beside
@@ -107,15 +113,7 @@ const PRIVILEGED_METHODS = new Set([
   'agentPreset.remove',
   'host.pickDirectory',
   'host.openPath',
-  'settings.describe',
   'settings.openDocument',
-  'settings.update',
-  'settings.replace',
-  'settings.mutate',
-  'credentials.describe',
-  'credentials.set',
-  'credentials.unset',
-  'llm.discoverModels',
 ])
 
 /**
