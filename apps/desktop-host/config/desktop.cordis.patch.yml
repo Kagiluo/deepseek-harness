@@ -32,3 +32,9 @@
 
     - id: ui-directory-picker-native
       name: '@deepseek-ai/dsh-client-ui-directory-picker-native'
+
+    # Desktop's own appearance: an alias-token layer over the built-in
+    # palettes. Private, so it rides the runtime closure rather than a
+    # registry install; the host package declares it as a dependency.
+    - id: ui-theme-nord
+      name: '@deepseek-ai/dsh-client-ui-theme-nord'

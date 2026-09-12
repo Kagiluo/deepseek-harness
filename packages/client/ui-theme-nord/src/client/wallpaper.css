@@ -1,0 +1,26 @@
+/* The selected background image and the opaque floor beneath it.
+   Both layers are positioned behind every in-flow element, so the shell frame
+   and its panels paint over them. What makes the image visible is the base
+   surface's own alpha, which --dsw-alias-bg-base carries while an image is
+   selected; raised surfaces keep their opaque tokens. */
+
+body::before,
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+
+body::before {
+  background: var(--dsh-nord-floor);
+}
+
+body::after {
+  background-image: var(--dsh-nord-wallpaper, none);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  opacity: var(--dsh-nord-wallpaper-opacity, 1);
+}
