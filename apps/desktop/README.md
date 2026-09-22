@@ -145,6 +145,22 @@ pnpm run package:desktop:win:x64:unsigned
 
 The command requires `DSH_DESKTOP_APP_ID` and the normal build dependencies, including Python and Visual C++ build tools for native modules. Set `PYTHON` to the Python executable when it is absent from `PATH`. It writes the installer to `.desktop-build/targets/win-x64/unsigned-artifacts/`, omits automatic-update configuration, strips signing credentials, and creates no release completion record. It does not require EV credentials or an update origin. The signed packaging and upload commands retain their release requirements.
 
+`build-windows.ps1` wraps that command with the host requirements it would otherwise fail on: it validates the Windows x64 build host, sets `DSH_DESKTOP_APP_ID`, locates Python, and reports the artifacts. It prepends neither signing material nor an update origin, so it produces the same unsigned installer.
+
+```powershell
+pwsh -NoProfile -File apps/desktop/scripts/build-windows.ps1
+```
+
+`-Clean` removes the target's build state while keeping the verified download cache, `-Install` runs the installer silently, and `-Run` starts the unpacked application. `-AppId` and `-Python` replace the application identifier and Python executable.
+
+`build-windows.bat` is the same entry point for callers that cannot invoke PowerShell. It runs the identical pipeline and reports the same artifacts; its output stays ASCII so it reads correctly on a non-UTF-8 console code page. It pauses before exiting when Explorer launched it, so a double-click keeps its result on screen.
+
+```bat
+apps\desktop\scripts\build-windows.bat clean run
+```
+
+Arguments replace the PowerShell switches: `clean` matches `-Clean` and `run` matches `-Run`. Set `DSH_DESKTOP_APP_ID` and `PYTHON` in the environment before running; the batch script has no `-AppId` or `-Python` arguments.
+
 ### Windows EV signing
 
 Windows packaging fixes the 7-Zip filter to `BCJ` for compatibility with the bundled NSIS decoder. This preserves ARM64 binaries carried by dependencies in x64 installers; automatic ARM64 filtering produces entries that this decoder cannot extract.

@@ -333,6 +333,12 @@
     - id: ui-agent-preset
       name: '@deepseek-ai/dsh-client-ui-agent-preset'
 
+    # Scheduled tasks: the settings page that authors the daily tasks the host
+    # scheduler runs. It renders nothing while the deployment registers no
+    # `scheduler` settings namespace.
+    - id: ui-scheduler
+      name: '@deepseek-ai/dsh-client-ui-scheduler'
+
     # Plugin configuration: the host-plane sections a user owns, as expandable
     # cards. A namespace this deployment does not expose renders nothing.
     - id: ui-settings-plugins
@@ -347,6 +353,21 @@
 
     - id: ui-trajectory
       name: '@deepseek-ai/dsh-client-ui-trajectory'
+
+    # ── layer 3: the scheduled-task plane ───────────────────────────────────────
+
+    # Daily wall-clock tasks: at each configured time the scheduler creates a
+    # Session in the task's workspace and admits its prompt. Configured here
+    # with no tasks, because a scheduled occurrence creates a root Session from
+    # this context and therefore needs `agents`, `workspaceRegistry`,
+    # `sessionTitle`, and `permissionPresets` — all of which this bundle supplies
+    # and the base layer does not. The tasks themselves come from the
+    # `scheduler:` settings section, which the Scheduled tasks page writes; a
+    # deployment ships starting tasks through this row's `config`.
+    - id: scheduler
+      name: '@deepseek-ai/dsh-scheduler'
+      config:
+        tasks: []
 
 # ── the agent plane moves behind agent presets ─────────────────────────────
 #

@@ -145,6 +145,22 @@ pnpm run package:desktop:win:x64:unsigned
 
 该命令要求设置 `DSH_DESKTOP_APP_ID` 并具备常规构建依赖，包括编译原生模块所需的 Python 和 Visual C++ 构建工具。Python 不在 `PATH` 中时，将 `PYTHON` 设置为其可执行文件路径。命令将安装包写入 `.desktop-build/targets/win-x64/unsigned-artifacts/`，省略自动更新配置，清除签名凭据，且不生成发布完成记录。它不需要 EV 凭据或更新源地址。签名打包和上传命令仍遵循正式发布要求。
 
+`build-windows.ps1` 在该命令之上补齐其前提条件：校验 Windows x64 构建宿主、设置 `DSH_DESKTOP_APP_ID`、定位 Python，并报告产物。它不注入签名材料或更新源，因此产出同样的未签名安装包。
+
+```powershell
+pwsh -NoProfile -File apps/desktop/scripts/build-windows.ps1
+```
+
+`-Clean` 删除目标的构建状态但保留已验证的下载缓存，`-Install` 静默运行安装包，`-Run` 启动解包后的应用。`-AppId` 与 `-Python` 分别替换应用标识符和 Python 可执行文件。
+
+`build-windows.bat` 是无法调用 PowerShell 时的同一入口。它运行完全相同的管线并报告相同产物；其输出保持 ASCII，以便在非 UTF-8 控制台代码页下正确显示。由资源管理器启动时，它会在退出前暂停，使双击后仍能看到结果。
+
+```bat
+apps\desktop\scripts\build-windows.bat clean run
+```
+
+参数对应 PowerShell 开关：`clean` 等价于 `-Clean`，`run` 等价于 `-Run`。运行前请在环境中设置 `DSH_DESKTOP_APP_ID` 与 `PYTHON`；批处理脚本没有 `-AppId` 和 `-Python` 参数。
+
 ### Windows EV 签名
 
 Windows 打包将 7-Zip 过滤器固定为 `BCJ`，以兼容内置的 NSIS 解码器。这样可以保留 x64 安装包中由依赖携带的 ARM64 二进制文件；自动 ARM64 过滤会生成该解码器无法解压的条目。
