@@ -18,7 +18,7 @@
 import { statSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
-import type {} from '@deepseek-ai/dsh-agent-presets'
+import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import type {} from '@deepseek-ai/dsh-permission-presets'
 import { resolveDailySchedule } from './time.ts'
 import type { ResolvedSchedulerTask, SchedulerTask } from './types.ts'
@@ -127,7 +127,7 @@ async function resolveTask(ctx: Context, task: SchedulerTask): Promise<ResolvedS
     )
   }
   const presets = ctx.get('agentPresets')
-  if (presets !== undefined && presets.roots.length > 0) {
+  if (presets !== undefined && (await presets.list()).length > 0) {
     if (task.agentPreset === undefined) {
       throw new SchedulerConfigError(
         `${named} must declare agentPreset: this deployment configures an agent preset roster, and an Agent that addresses`
@@ -138,7 +138,7 @@ async function resolveTask(ctx: Context, task: SchedulerTask): Promise<ResolvedS
   } else if (task.agentPreset !== undefined) {
     throw new SchedulerConfigError(
       `${named} declares agentPreset "${task.agentPreset}", but this deployment configures no agent preset roster to join;`
-      + ' remove the field or mount @deepseek-ai/dsh-agent-presets.',
+      + ' remove the field or mount @deepseek-ai/dsh-agent-preset-registry.',
     )
   }
   return {

@@ -1,78 +1,70 @@
-/**
- * Wire values for the `terminals` Remote namespace.
- *
- * Raw terminal bytes cross the wire base64-encoded: a JSON carrier has no byte
- * string, and an escape sequence must survive unchanged for the Client's
- * emulator to draw what the shell wrote.
- * @module @deepseek-ai/dsh-api-terminal-controller/types
- */
+/** Browser terminal identities, metadata and screen-stream frames. */
+import type { Branded } from '@deepseek-ai/dsh-brand'
+import type {} from '@deepseek-ai/dsh-typert-protocol'
 
-import type { SessionId } from '@deepseek-ai/dsh-session/types'
-
-/**
- * Top-level terminal process status as the Client sees it. A signal is the
- * platform's name for it (`SIGTERM`), which is the form a browser can print.
- */
-export type TerminalWireStatus =
-  | { readonly kind: 'running' }
-  | { readonly kind: 'exited'; readonly exitCode: number | null; readonly signal: string | null }
-
-/** One live terminal as the Client sees it. */
-export interface TerminalSnapshot {
-  /** Host-minted identity used by every later operation. */
-  readonly terminalId: string
-  /** Top-level process id when the provider has one. */
-  readonly pid?: number
-  /** Current top-level process status. */
-  readonly status: TerminalWireStatus
+declare module '@deepseek-ai/dsh-typert-protocol' {
+  interface RemoteErrorDetailsMap {
+    /** The terminal identity is missing or has begun process cleanup. */
+    'terminal/unavailable': Record<string, never>
+    /** Input or resize was refused without invalidating the output attachment. */
+    'terminal/control-unavailable': { readonly reason: 'read-only' | 'not-running' }
+    /** Retained screens and pending allocations consume the Session's terminal quota. */
+    'terminal/limit-reached': { readonly limit: number }
+  }
 }
 
-/** One frame of a terminal's live stream. */
+/** A terminal identity scoped to one Session and one Host lifetime. */
+export type WebTerminalId = Branded<'WebTerminalId'>
+/** An attachment allowed to write and resize one terminal. */
+export type TerminalAttachmentId = Branded<'TerminalAttachmentId'>
+
+/** Acknowledges one physical window hold without taking screen or input control. */
+export interface TerminalRetentionFrame {
+  readonly type: 'retained'
+}
+
+/** An executable shell verified in the subprocess provider's execution environment. */
+export interface TerminalShell {
+  readonly path: string
+  readonly args: readonly string[]
+  readonly name: string
+}
+
+/** Working directory and limits shared by new and restored terminals. */
+export interface TerminalEnvironment {
+  readonly cwd: string
+  readonly maxInputBytes: number
+  readonly maxCols: number
+  readonly maxRows: number
+  readonly scrollback: number
+}
+
+/** Host-owned terminal state; process exit never creates a replacement shell. */
+export interface WebTerminalInfo {
+  readonly id: WebTerminalId
+  readonly title: string
+  readonly shell: TerminalShell
+  /** Initial working directory; shell directory changes do not update this field. */
+  readonly cwd: string
+  readonly cols: number
+  readonly rows: number
+  readonly state: 'running' | 'exited' | 'failed'
+  readonly exitCode: number | null
+  readonly error?: string
+  readonly controllerId?: TerminalAttachmentId
+}
+
+/** Create is idempotent for an open identity; closed identities cannot be recreated. */
+export interface TerminalCreateRequest {
+  /** A path returned by shell discovery; absent selects the execution default. */
+  readonly shellPath?: string
+  readonly id: WebTerminalId
+  readonly cols: number
+  readonly rows: number
+}
+
+/** Every attachment begins with a complete bounded screen, then ordered output. */
 export type TerminalFrame =
-  | { readonly kind: 'output'; readonly data: string }
-  | { readonly kind: 'failed'; readonly message: string }
-  | { readonly kind: 'exit'; readonly status: TerminalWireStatus }
-
-/** Open one terminal inside the named Session. */
-export interface TerminalOpenRequest {
-  /** Session that owns the new terminal and selects its execution policy. */
-  readonly sessionId: SessionId
-  /** Terminal column count at open time. */
-  readonly cols: number
-  /** Terminal row count at open time. */
-  readonly rows: number
-}
-
-/** Address one live terminal of one Session. */
-export interface TerminalTarget {
-  /** Session that owns the terminal. */
-  readonly sessionId: SessionId
-  /** Host-minted terminal identity. */
-  readonly terminalId: string
-}
-
-/** Deliver input bytes to one terminal. */
-export interface TerminalWriteRequest extends TerminalTarget {
-  /** Text to deliver without implicit newline conversion. */
-  readonly data: string
-}
-
-/** Change one terminal's window size. */
-export interface TerminalResizeRequest extends TerminalTarget {
-  /** New column count. */
-  readonly cols: number
-  /** New row count. */
-  readonly rows: number
-}
-
-/** Report one Session's live terminals. */
-export interface TerminalListRequest {
-  /** Session whose terminals are listed. */
-  readonly sessionId: SessionId
-}
-
-/** The result of one close request. */
-export interface TerminalCloseResult {
-  /** True for a newly closed terminal, false when the same close was already in flight. */
-  readonly closed: boolean
-}
+  | { readonly type: 'snapshot'; readonly sequence: number; readonly screen: string; readonly info: WebTerminalInfo }
+  | { readonly type: 'output'; readonly sequence: number; readonly data: string }
+  | { readonly type: 'state'; readonly info: WebTerminalInfo }

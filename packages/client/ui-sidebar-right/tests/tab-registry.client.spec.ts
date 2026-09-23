@@ -210,7 +210,7 @@ describe('SidebarRightTabRegistry — ids and page types', () => {
       kind: 'files',
       priority: 'builtin',
       title: () => 'Files',
-      guide: [{ order: 10, title: () => 'Files' }],
+      guide: [{ id: 'default', order: 10, title: () => 'Files' }],
     })
     expect(ranked(registry, 'dsh-resource://file/session/s/a.txt')).toEqual([])
     expect(registry.get('files')?.title('x')).toBe('Files')
@@ -258,7 +258,7 @@ describe('SidebarRightTabRegistry — lifetime', () => {
 
   it('collects every type\'s guide entries in order, reference-stable between changes', () => {
     const registry = new SidebarRightTabRegistry(new Context())
-    const entry = (order: number) => ({ order, title: () => `#${order}` })
+    const entry = (order: number) => ({ id: String(order), order, title: () => `#${order}` })
     registry.register(typeFor('files', [], { guide: [entry(10)] }))
     const first = registry.guide()
     expect(registry.guide()).toBe(first)
@@ -291,8 +291,19 @@ describe('SidebarRightTabRegistry — lifetime', () => {
   })
 })
 
+it('uses the active provider id for guide dispatch and refuses duplicate entry identities', () => {
+  const registry = new SidebarRightTabRegistry(new Context())
+  const guide = [{ id: 'new', order: 10, title: () => 'Terminal' }]
+  registry.register(typeFor('terminal', [], { id: 'builtin/terminal', priority: 'builtin', guide }))
+  const remove = registry.register(typeFor('terminal', [], { id: 'extension/terminal', priority: 'extension', guide }))
+  expect(registry.guide()[0]?.providerId).toBe('extension/terminal')
+  remove()
+  expect(registry.guide()[0]?.providerId).toBe('builtin/terminal')
+  expect(() => registry.register(typeFor('duplicate', [], { guide: [guide[0]!, guide[0]!] }))).toThrow('duplicate guide entry id')
+})
+
 describe('defaultSeed — the default page', () => {
-  const box = (order: number): SidebarRightGuideEntry => ({ order, title: () => `#${order}` })
+  const box = (order: number): SidebarRightGuideEntry => ({ id: `entry/${order}`, order, title: () => `#${order}` })
 
   it('opens the lowest-ordered guide entry whatever the registration order', () => {
     const registry = new SidebarRightTabRegistry(new Context())
