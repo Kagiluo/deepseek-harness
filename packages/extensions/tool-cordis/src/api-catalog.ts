@@ -6182,7 +6182,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'TerminalWireStatus',
-    declaration: 'export type TerminalWireStatus = {\n    readonly kind: \'running\';\n} | {\n    readonly kind: \'exited\';\n    readonly exitCode: number | null;\n    readonly signal: NodeJS.Signals | null;\n};',
+    declaration: 'export type TerminalWireStatus = {\n    readonly kind: \'running\';\n} | {\n    readonly kind: \'exited\';\n    readonly exitCode: number | null;\n    readonly signal: string | null;\n};',
   },
   {
     name: 'TerminalWriteRequest',

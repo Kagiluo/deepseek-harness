@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-15-daily-wall-clock-scheduler.md
+2026-09-15-daily-wall-clock-scheduler.md: b1aab2a0560db0e9cb828c2c49a4bc4c478310b3
+2026-09-15-daily-wall-clock-scheduler.zh.md: 1a7d1d9d2c6b38a1a04b033e2a90d1515ebbd977

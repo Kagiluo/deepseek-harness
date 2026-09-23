@@ -7,7 +7,7 @@ import { chmod, readFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { pipeline } from 'node:stream/promises'
-import extractZip from 'extract-zip'
+import { unzipSync } from 'fflate'
 import { extract } from 'tar'
 import { resolveDesktopTargetBuildPaths } from './desktop-build-paths.mjs'
 
@@ -36,6 +36,37 @@ async function download(url: string, path: string): Promise<void> {
   writeFileSync(path, new Uint8Array(await response.arrayBuffer()), { mode: 0o600 })
 }
 
+/**
+ * Extract named members from a ZIP archive.
+ *
+ * `extract-zip` is deliberately not used: it reaches `yauzl@2.10.0`, whose
+ * `fd-slicer` read queue stalls part-way through a large archive on Node.js 24
+ * — the runtime this script downloads, and a range the repository's `engines`
+ * admits. The filter extracts only the members the caller names, so peak memory
+ * tracks that member rather than the archive.
+ * @param archiveBytes - The complete archive contents.
+ * @param destinationRoot - Directory the member paths are written under.
+ * @param members - Archive-relative member names to extract.
+ * @param archive - Archive path used in diagnostics.
+ * @throws {Error} when the archive does not hold one of the named members.
+ */
+export function extractZipMembers(
+  archiveBytes: Uint8Array,
+  destinationRoot: string,
+  members: readonly string[],
+  archive: string,
+): void {
+  const wanted = new Set(members)
+  const files = unzipSync(archiveBytes, { filter: file => wanted.has(file.name) })
+  for (const member of members) {
+    const bytes = files[member]
+    if (bytes === undefined) throw new Error(`desktop runtime: ${member} is absent from ${archive}`)
+    const destination = join(destinationRoot, ...member.split('/'))
+    mkdirSync(dirname(destination), { recursive: true })
+    writeFileSync(destination, bytes)
+  }
+}
+
 async function prepareNode(platform: RuntimePlatform, arch: RuntimeArch): Promise<void> {
   const extension = platform === 'win' ? 'zip' : 'tar.gz'
   const folder = `node-v${NODE_VERSION}-${platform}-${arch}`
@@ -55,7 +86,9 @@ async function prepareNode(platform: RuntimePlatform, arch: RuntimeArch): Promis
   const extraction = BUILD_PATHS.nodeExtract
   rmSync(extraction, { recursive: true, force: true })
   mkdirSync(extraction, { recursive: true })
-  if (platform === 'win') await extractZip(archive, { dir: extraction })
+  // Only the runtime binary is consumed below, so the Windows path extracts that
+  // one member instead of expanding the complete archive.
+  if (platform === 'win') extractZipMembers(readFileSync(archive), extraction, [`${folder}/node.exe`], archive)
   else await extract({ cwd: extraction, file: archive })
   const source = join(extraction, folder, platform === 'win' ? 'node.exe' : 'bin/node')
   const destinationRoot = join(RUNTIME_ROOT, 'node')
@@ -104,4 +137,4 @@ async function main(): Promise<void> {
   }, undefined, 2)}\n`)
 }
 
-await main()
+if (import.meta.main) await main()

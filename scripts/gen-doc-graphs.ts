@@ -214,6 +214,13 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Carries the picking seam onto the wire: capability gating, cancellation, and the seam-coded failures a browser directory flow discriminates on.',
   },
   {
+    key: 'terminalController',
+    pkg: 'api-terminal-controller',
+    title: 'Host interactive-terminal Remote controller',
+    mode: 'core',
+    note: 'Projects the interactive-terminal seam onto the generated `terminals` namespace, base64-encoding raw bytes for a JSON carrier and fencing every operation on the owning Session.',
+  },
+  {
     key: 'invariants',
     pkg: 'invariants',
     title: 'Package-owned invariant registry',
@@ -504,6 +511,15 @@ const SERVICE_ROLES: ServiceRole[] = [
     implementations: ['terminal-bash'],
     consumers: ['tool-terminal'],
     note: 'The registry owns exact-Agent session identity and cleanup; backends own terminal mechanics, while tool-terminal exposes the owner-scoped model tools.',
+  },
+  {
+    key: 'interactiveTerminals',
+    pkg: 'terminal-interactive',
+    title: 'Interactive terminal registry',
+    mode: 'seam',
+    implementations: ['terminal-interactive-local'],
+    consumers: ['api-terminal-controller'],
+    note: 'The registry owns Session-scoped terminal identity, one consumer per terminal, and bounded retention for output produced before a consumer attaches; the provider owns the shell process and its resize, while the Remote carries raw bytes to an emulator.',
   },
   {
     key: 'sandbox',

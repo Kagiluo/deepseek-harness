@@ -505,6 +505,21 @@
       "source": "packages/todo/tool-todo/src/types.ts"
     },
     {
+      "doc": "docs/subsystems/scheduler.md",
+      "symbol": "SchedulerTask",
+      "source": "packages/scheduler/scheduler/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/scheduler.md",
+      "symbol": "ResolvedSchedulerTask",
+      "source": "packages/scheduler/scheduler/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/scheduler.md",
+      "symbol": "DailySchedule",
+      "source": "packages/scheduler/scheduler/src/time.ts"
+    },
+    {
       "doc": "docs/subsystems/session.md",
       "symbol": "SessionEvent",
       "source": "packages/core/session/src/types.ts"
