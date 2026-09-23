@@ -19,14 +19,13 @@ export interface SidebarRightSeed {
 }
 
 /**
- * Resolve the default page from the registered entry count.
+ * Resolve the default page from the registered guide entries.
  * @param tabs - current tab registry.
- * @returns the sole entry, or the guide when there are zero or multiple entries.
+ * @returns the lowest-ordered entry, or the guide when no type contributed one,
+ * so a further door never displaces the surface the column already opened on.
  */
 export function defaultSeed(tabs: SidebarRightTabRegistry): SidebarRightSeed {
-  const [only, ...others] = tabs.guide()
-  const single = only !== undefined && others.length === 0
-  const kind = single ? only.kind : GUIDE_KIND
+  const kind = tabs.guide()[0]?.kind ?? GUIDE_KIND
   const definition = tabs.get(kind)
   if (definition === undefined) throw new Error(`sidebarRight: default tab kind "${kind}" is not registered`)
   return { kind, title: definition.title(pageAddress(kind)) }

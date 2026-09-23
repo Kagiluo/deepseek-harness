@@ -134,8 +134,8 @@ describe('RightbarSeat presentation', () => {
     const h = await mountSeat(1440, true, entryCount)
     act(() => { h.controller.toggleExpanded() })
     const initial = Object.values(h.layout().tabs)[0]!
-    expect(initial.kind).toBe(entryCount === 1 ? 'text' : 'guide')
-    if (entryCount !== 1) {
+    expect(initial.kind).toBe(entryCount === 0 ? 'guide' : 'text')
+    if (entryCount === 0) {
       expect(h.view.container.querySelectorAll('[data-dockkit-tab-close]')).toHaveLength(0)
       const before = h.layout()
       act(() => { h.controller.close(initial.id) })

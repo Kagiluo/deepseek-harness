@@ -10,7 +10,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { SidebarRightTabRegistry } from '../src/client/tab-registry.ts'
-import type { SidebarRightTabDefinition } from '../src/client/tab-registry.ts'
+import type { SidebarRightGuideEntry, SidebarRightTabDefinition } from '../src/client/tab-registry.ts'
 import { defaultSeed } from '../src/client/contract/seed.ts'
 
 /** A type recognizing `patterns`, titled by its kind. */
@@ -288,5 +288,29 @@ describe('SidebarRightTabRegistry — lifetime', () => {
     expect(registry.entries()).toBe(first)
     registry.register(typeFor('guide', ['sidebar://guide']))
     expect(registry.entries()).not.toBe(first)
+  })
+})
+
+describe('defaultSeed — the default page', () => {
+  const box = (order: number): SidebarRightGuideEntry => ({ order, title: () => `#${order}` })
+
+  it('opens the lowest-ordered guide entry whatever the registration order', () => {
+    const registry = new SidebarRightTabRegistry(new Context())
+    registry.register(typeFor('terminal', [], { guide: [box(20)] }))
+    registry.register(typeFor('files', [], { guide: [box(10)] }))
+    expect(defaultSeed(registry)).toEqual({ kind: 'files', title: 'files:sidebar://files' })
+  })
+
+  it('opens the sole guide entry when one type contributes it', () => {
+    const registry = new SidebarRightTabRegistry(new Context())
+    registry.register(typeFor('files', [], { guide: [box(10)] }))
+    expect(defaultSeed(registry)).toEqual({ kind: 'files', title: 'files:sidebar://files' })
+  })
+
+  it('opens the guide itself when no type contributed an entry', () => {
+    const registry = new SidebarRightTabRegistry(new Context())
+    registry.register(typeFor('guide', ['sidebar://guide']))
+    registry.register(typeFor('text', ['dsh-resource://file/**']))
+    expect(defaultSeed(registry)).toEqual({ kind: 'guide', title: 'guide:sidebar://guide' })
   })
 })

@@ -16,6 +16,8 @@ The [last-tab close rule](2026-09-08-sidebar-last-tab-close-rules.md) owns close
 
 This replaces default-guide selection in [the shipped types](2026-09-05-sidebar-text-preview-and-file-tree.md) and explicit last-tab closing in [docking infrastructure](2026-09-04-right-sidebar-docking-infrastructure.md). Their registration, content-state, engine and layout ownership decisions remain active.
 
+The selection rule above is replaced by [Sidebar default page order](2026-09-13-sidebar-default-page-order.md), which makes the lowest-ordered guide entry the default page. Close-protection ownership and one-guide-per-pane remain active here.
+
 ## Alternatives considered
 
 **Count all registered tab types or currently open tabs.** Neither counts choices available on the guide; resource viewers need not contribute an entry.

@@ -10,7 +10,7 @@
  */
 import { readFile } from 'node:fs/promises'
 import { existsSync, globSync, readFileSync } from 'node:fs'
-import { isBuiltin } from 'node:module'
+import { isBuiltin, createRequire } from 'node:module'
 import { basename, dirname, isAbsolute, relative, resolve as resolvePath, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { UserConfig } from 'tsdown'
@@ -614,8 +614,17 @@ const SOURCE_MARKER = `${sep}src${sep}`
 /** Trailing sourcemap reference tsc appends to every emitted module. */
 const SOURCEMAP_COMMENT = /\n\/\/# sourceMappingURL=.*\s*$/
 
-/** Resolve an emitted JS asset import against its source-tree counterpart. */
+/**
+ * Resolve an emitted JS asset import against its source-tree counterpart.
+ *
+ * A bare specifier names a dependency's stylesheet (`@xterm/xterm/css/xterm.css`),
+ * so it resolves from the importer's package rather than from its directory.
+ * @param source - relative or bare import specifier as written in the source.
+ * @param importer - absolute path of the importing module.
+ * @returns the stylesheet on disk.
+ */
 function sourceAssetPath(source: string, importer: string): string {
+  if (isBareSpecifier(source)) return createRequire(importer).resolve(source)
   const emitted = resolvePath(dirname(importer), source)
   if (existsSync(emitted)) return emitted
   const boundary = emitted.indexOf(TYPES_MARKER)

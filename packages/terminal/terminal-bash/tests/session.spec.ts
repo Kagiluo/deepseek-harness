@@ -50,6 +50,7 @@ class FakeTerminal implements SubprocessTerminalHandle {
   pid = 123
   readonly output = new PassThrough()
   readonly writes: string[] = []
+  readonly resizes: { cols: number; rows: number }[] = []
   readonly kills: string[] = []
   readonly outcome = Promise.withResolvers<SubprocessOutcome>()
   readonly done = this.outcome.promise
@@ -89,6 +90,10 @@ class FakeTerminal implements SubprocessTerminalHandle {
   async write(data: string): Promise<void> {
     if (this.throwWrite) throw new Error('write failed')
     this.writes.push(data)
+  }
+
+  async resize(cols: number, rows: number): Promise<void> {
+    this.resizes.push({ cols, rows })
   }
 
   async inspectForeground() {

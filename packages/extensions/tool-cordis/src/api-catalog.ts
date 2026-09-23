@@ -1126,6 +1126,67 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'interactiveTerminals',
+    summary: 'In-process registry for replaceable interactive-terminal providers and session-scoped terminals.',
+    description: 'In-process registry for replaceable interactive-terminal providers and session-scoped terminals.',
+    methods: [
+      {
+        signature: 'registerProvider(provider: InteractiveTerminalProvider): () => void',
+        description: 'Register one provider type for this effect scope.',
+        parameters: [{ name: 'provider', description: 'provider with a non-empty unique type.' }],
+        returns: 'disposer that removes exactly this contribution.',
+      },
+      {
+        signature: 'listProviders(): string[]',
+        description: 'List registered provider types in registration order.',
+        parameters: [],
+        returns: 'fresh provider type names.',
+      },
+      {
+        signature: 'async open( owner: SessionId, request: InteractiveTerminalOpenRequest, signal?: AbortSignal, ): Promise<InteractiveTerminalSnapshot>',
+        description: 'Allocate and publish one owner-scoped terminal after provider setup succeeds.',
+        parameters: [{ name: 'owner', description: 'Session that owns access and cleanup.' }, { name: 'request', description: 'provider type, working directory, and initial dimensions.' }, { name: 'signal', description: 'cancellation of unpublished provider setup.' }],
+        returns: 'the published identity, provider type, process id, and status.',
+      },
+      {
+        signature: 'list(owner: SessionId): InteractiveTerminalSnapshot[]',
+        description: 'List fresh snapshots for exactly one Session.',
+        parameters: [{ name: 'owner', description: 'Session whose terminals are visible.' }],
+        returns: 'owner-visible snapshots in publication order.',
+      },
+      {
+        signature: 'async write(owner: SessionId, id: InteractiveTerminalId, data: string): Promise<void>',
+        description: 'Write bytes to one owned terminal\'s input.',
+        parameters: [{ name: 'owner', description: 'Session that owns the terminal.' }, { name: 'id', description: 'target terminal identity.' }, { name: 'data', description: 'text to deliver without implicit newline conversion.' }],
+        returns: 'once the provider accepted the write.',
+      },
+      {
+        signature: 'async resize(owner: SessionId, id: InteractiveTerminalId, cols: number, rows: number): Promise<void>',
+        description: 'Change one owned terminal\'s window size.',
+        parameters: [{ name: 'owner', description: 'Session that owns the terminal.' }, { name: 'id', description: 'target terminal identity.' }, { name: 'cols', description: 'new column count.' }, { name: 'rows', description: 'new row count.' }],
+        returns: 'once the provider applied the size.',
+      },
+      {
+        signature: 'frames(owner: SessionId, id: InteractiveTerminalId, signal: AbortSignal): AsyncIterable<InteractiveTerminalFrame>',
+        description: 'Follow one owned terminal\'s output.\n\nExactly one generation may hold a terminal\'s output at a time, so a second caller is a wiring mistake rather than a silent split of the byte stream.',
+        parameters: [{ name: 'owner', description: 'Session that owns the terminal.' }, { name: 'id', description: 'target terminal identity.' }, { name: 'signal', description: 'cancellation of this generation.' }],
+        returns: 'retained and live frames in production order.',
+      },
+      {
+        signature: 'async close(owner: SessionId, id: InteractiveTerminalId, reason: string = \'client request\'): Promise<boolean>',
+        description: 'Close one owned terminal and remove it only after quiescent provider cleanup.',
+        parameters: [{ name: 'owner', description: 'Session that owns the terminal.' }, { name: 'id', description: 'target terminal identity.' }, { name: 'reason', description: 'diagnostic cleanup reason.' }],
+        returns: 'true for a newly closed terminal, false when the same close is already in flight.',
+      },
+      {
+        signature: 'async closeOwner(owner: SessionId, reason: string = \'session closed\'): Promise<void>',
+        description: 'Close every terminal one Session owns, awaiting quiescence for each.',
+        parameters: [{ name: 'owner', description: 'Session whose terminals all close.' }, { name: 'reason', description: 'diagnostic cleanup reason.' }],
+        returns: 'once every terminal closed; rejects with every failure otherwise.',
+      },
+    ],
+  },
+  {
     key: 'invariants',
     summary: 'Package-owned invariant registry with global and regex-based selection.',
     description: 'Package-owned invariant registry with global and regex-based selection.',
@@ -2454,6 +2515,47 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Assemble global and scoped providers, detach tool parameters, apply canonical ordering, then run the assembly waterfall. Scoped sections and variables shadow globals. The returned waterfall value is authoritative except that an effective complete section is restored afterwards as the sole prompt section.',
         parameters: [{ name: 'context', description: 'the optional scope and plugin-defined assembly fields.' }],
         returns: 'the post-waterfall assembly with any complete prompt enforced.',
+      },
+    ],
+  },
+  {
+    key: 'terminalController',
+    summary: 'Host Remote surface over `ctx.interactiveTerminals`.',
+    description: 'Host Remote surface over `ctx.interactiveTerminals`.',
+    methods: [
+      {
+        signature: '@Remote async open(request: TerminalOpenRequest, signal: AbortSignal): Promise<TerminalSnapshot>',
+        description: 'Open one terminal in a Session\'s workspace.',
+        parameters: [{ name: 'request', description: 'owning Session and initial window size.' }, { name: 'signal', description: 'cancellation of allocation.' }],
+        returns: 'the new terminal\'s identity, process id, and status.',
+      },
+      {
+        signature: '@Remote list(request: TerminalListRequest): TerminalSnapshot[]',
+        description: 'List the live terminals one Session owns.',
+        parameters: [{ name: 'request', description: 'Session whose terminals are listed.' }],
+        returns: 'owner-visible snapshots in publication order.',
+      },
+      {
+        signature: '@Remote async write(request: TerminalWriteRequest, signal: AbortSignal): Promise<void>',
+        description: 'Deliver input bytes to one terminal.',
+        parameters: [{ name: 'request', description: 'target terminal and the text to deliver.' }, { name: 'signal', description: 'cancellation of the provider write.' }],
+      },
+      {
+        signature: '@Remote async resize(request: TerminalResizeRequest, signal: AbortSignal): Promise<void>',
+        description: 'Change one terminal\'s window size.',
+        parameters: [{ name: 'request', description: 'target terminal and its new dimensions.' }, { name: 'signal', description: 'cancellation of the provider resize.' }],
+      },
+      {
+        signature: '@Remote async close(request: TerminalTarget, signal: AbortSignal): Promise<TerminalCloseResult>',
+        description: 'Close one terminal after awaited provider cleanup.',
+        parameters: [{ name: 'request', description: 'the terminal to close.' }, { name: 'signal', description: 'cancellation of the provider cleanup.' }],
+        returns: 'whether this call performed the close.',
+      },
+      {
+        signature: '@Remote({ mode: \'stream\' }) output(request: TerminalTarget, signal: AbortSignal): AsyncIterable<TerminalFrame>',
+        description: 'Follow one terminal\'s output for the life of this generation.',
+        parameters: [{ name: 'request', description: 'the terminal to follow.' }, { name: 'signal', description: 'generation cancellation; the seam releases the terminal\'s consumer slot either way.' }],
+        returns: 'retained and live frames, base64-encoded in production order.',
       },
     ],
   },
@@ -4395,6 +4497,42 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type InspectorJsonValue = InspectorJsonPrimitive | readonly InspectorJsonValue[] | InspectorJsonObject;',
   },
   {
+    name: 'InteractiveTerminalBackendSession',
+    declaration: 'export interface InteractiveTerminalBackendSession {\n    readonly pid?: number | undefined;\n    readonly output: AsyncIterable<Uint8Array>;\n    write(data: string): Promise<void>;\n    resize(cols: number, rows: number): Promise<void>;\n    status(): InteractiveTerminalStatus;\n    close(reason: string): Promise<void>;\n}',
+  },
+  {
+    name: 'InteractiveTerminalFrame',
+    declaration: 'export type InteractiveTerminalFrame = {\n    readonly kind: \'output\';\n    readonly data: Uint8Array;\n} | {\n    readonly kind: \'failed\';\n    readonly message: string;\n} | {\n    readonly kind: \'exit\';\n    readonly status: InteractiveTerminalStatus;\n};',
+  },
+  {
+    name: 'InteractiveTerminalId',
+    declaration: 'export type InteractiveTerminalId = InteractiveTerminalIdValue;',
+  },
+  {
+    name: 'InteractiveTerminalIdValue',
+    declaration: 'export type InteractiveTerminalIdValue = Branded<\'InteractiveTerminalId\'>;',
+  },
+  {
+    name: 'InteractiveTerminalOpenRequest',
+    declaration: 'export interface InteractiveTerminalOpenRequest {\n    readonly type: string;\n    readonly cwd?: string | undefined;\n    readonly cols: number;\n    readonly rows: number;\n}',
+  },
+  {
+    name: 'InteractiveTerminalOpenSpec',
+    declaration: 'export interface InteractiveTerminalOpenSpec extends InteractiveTerminalOpenRequest {\n    readonly terminalId: InteractiveTerminalIdValue;\n    readonly owner: SessionId;\n    readonly signal?: AbortSignal | undefined;\n}',
+  },
+  {
+    name: 'InteractiveTerminalProvider',
+    declaration: 'export interface InteractiveTerminalProvider {\n    readonly type: string;\n    open(spec: InteractiveTerminalOpenSpec): Promise<InteractiveTerminalBackendSession>;\n}',
+  },
+  {
+    name: 'InteractiveTerminalSnapshot',
+    declaration: 'export interface InteractiveTerminalSnapshot {\n    readonly terminalId: InteractiveTerminalIdValue;\n    readonly type: string;\n    readonly pid?: number | undefined;\n    readonly status: InteractiveTerminalStatus;\n}',
+  },
+  {
+    name: 'InteractiveTerminalStatus',
+    declaration: 'export type InteractiveTerminalStatus = {\n    readonly kind: \'running\';\n} | {\n    readonly kind: \'exited\';\n    readonly exitCode: number | null;\n    readonly signal: NodeJS.Signals | null;\n};',
+  },
+  {
     name: 'InvariantFailure',
     declaration: 'export type InvariantFailure = (message: string) => never;',
   },
@@ -4953,6 +5091,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ResumeAgentOptions',
     declaration: 'export interface ResumeAgentOptions {\n    readonly resumeSessionId: SessionId;\n    readonly parentAgent?: Agent;\n    readonly agentOptions?: AgentOptions;\n    readonly signal?: AbortSignal;\n    readonly setup?: AgentSetup;\n}',
+  },
+  {
+    name: 'Role',
+    declaration: 'export type Role = typeof ROLES[number];',
   },
   {
     name: 'RunnerFailureRule',
@@ -5840,7 +5982,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SubprocessTerminalHandle',
-    declaration: 'export interface SubprocessTerminalHandle {\n    readonly pid: number;\n    readonly output: Readable;\n    readonly done: Promise<SubprocessOutcome>;\n    write(data: string): Promise<void>;\n    inspectForeground(): Promise<SubprocessTerminalForeground | undefined>;\n    signalForeground(signal: SubprocessTerminalSignal): Promise<number>;\n    terminate(): Promise<void>;\n}',
+    declaration: 'export interface SubprocessTerminalHandle {\n    readonly pid: number;\n    readonly output: Readable;\n    readonly done: Promise<SubprocessOutcome>;\n    write(data: string): Promise<void>;\n    resize(cols: number, rows: number): Promise<void>;\n    inspectForeground(): Promise<SubprocessTerminalForeground | undefined>;\n    signalForeground(signal: SubprocessTerminalSignal): Promise<number>;\n    terminate(): Promise<void>;\n}',
   },
   {
     name: 'SubprocessTerminalSignal',
@@ -5947,12 +6089,32 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface TerminalCallView {\n    card: \'terminal\';\n    title: string;\n    description?: string;\n    cwd?: string;\n}',
   },
   {
+    name: 'TerminalCloseResult',
+    declaration: 'export interface TerminalCloseResult {\n    readonly closed: boolean;\n}',
+  },
+  {
+    name: 'TerminalFrame',
+    declaration: 'export type TerminalFrame = {\n    readonly kind: \'output\';\n    readonly data: string;\n} | {\n    readonly kind: \'failed\';\n    readonly message: string;\n} | {\n    readonly kind: \'exit\';\n    readonly status: TerminalWireStatus;\n};',
+  },
+  {
+    name: 'TerminalListRequest',
+    declaration: 'export interface TerminalListRequest {\n    readonly sessionId: SessionId;\n}',
+  },
+  {
+    name: 'TerminalOpenRequest',
+    declaration: 'export interface TerminalOpenRequest {\n    readonly sessionId: SessionId;\n    readonly cols: number;\n    readonly rows: number;\n}',
+  },
+  {
     name: 'TerminalReadRequest',
     declaration: 'export interface TerminalReadRequest {\n    offset?: number;\n    count?: number;\n}',
   },
   {
     name: 'TerminalReadResult',
     declaration: 'export interface TerminalReadResult {\n    text: string;\n    totalLines: number;\n    lineBegin: number;\n    lineEnd: number;\n    truncated: boolean;\n}',
+  },
+  {
+    name: 'TerminalResizeRequest',
+    declaration: 'export interface TerminalResizeRequest extends TerminalTarget {\n    readonly cols: number;\n    readonly rows: number;\n}',
   },
   {
     name: 'TerminalResultView',
@@ -5999,6 +6161,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface TerminalSignalResult {\n    delivered: true;\n    targetPgid: number;\n}',
   },
   {
+    name: 'TerminalSnapshot',
+    declaration: 'export interface TerminalSnapshot {\n    readonly terminalId: string;\n    readonly pid?: number;\n    readonly status: TerminalWireStatus;\n}',
+  },
+  {
     name: 'TerminalSpawnRequest',
     declaration: 'export interface TerminalSpawnRequest {\n    type: string;\n    name?: string;\n    cwd?: string;\n}',
   },
@@ -6007,8 +6173,20 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface TerminalSpawnResult extends TerminalSessionSnapshot {\n    motd: string;\n}',
   },
   {
+    name: 'TerminalTarget',
+    declaration: 'export interface TerminalTarget {\n    readonly sessionId: SessionId;\n    readonly terminalId: string;\n}',
+  },
+  {
     name: 'TerminalWaitReason',
     declaration: 'export type TerminalWaitReason = \'stdin_read\' | \'inferred_idle\' | \'timeout\' | \'session_exit\';',
+  },
+  {
+    name: 'TerminalWireStatus',
+    declaration: 'export type TerminalWireStatus = {\n    readonly kind: \'running\';\n} | {\n    readonly kind: \'exited\';\n    readonly exitCode: number | null;\n    readonly signal: NodeJS.Signals | null;\n};',
+  },
+  {
+    name: 'TerminalWriteRequest',
+    declaration: 'export interface TerminalWriteRequest extends TerminalTarget {\n    readonly data: string;\n}',
   },
   {
     name: 'TokenMeasurement',

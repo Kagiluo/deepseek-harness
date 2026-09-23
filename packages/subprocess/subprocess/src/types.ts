@@ -243,6 +243,13 @@ export interface SubprocessTerminalHandle {
    */
   write(data: string): Promise<void>
   /**
+   * Change the terminal's window size and deliver the platform's resize
+   * notification to the terminal's foreground process group.
+   * @param cols - new column count.
+   * @param rows - new row count.
+   */
+  resize(cols: number, rows: number): Promise<void>
+  /**
    * Inspect the current foreground process group.
    * @returns its id and input-wait fact, or undefined when no foreground group can be resolved.
    */

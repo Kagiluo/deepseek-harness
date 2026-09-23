@@ -1102,6 +1102,21 @@
       "source": "packages/terminal/terminal/src/types.ts"
     },
     {
+      "doc": "docs/subsystems/terminal.md",
+      "symbol": "InteractiveTerminalStatus",
+      "source": "packages/terminal/terminal-interactive/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/terminal.md",
+      "symbol": "InteractiveTerminalFrame",
+      "source": "packages/terminal/terminal-interactive/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/terminal.md",
+      "symbol": "InteractiveTerminalProvider",
+      "source": "packages/terminal/terminal-interactive/src/types.ts"
+    },
+    {
       "doc": "docs/subsystems/sandbox.md",
       "symbol": "SandboxMode",
       "source": "packages/sandbox/sandbox/src/index.ts"

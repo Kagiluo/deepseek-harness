@@ -16,6 +16,8 @@ Sidebar 从已注册的引导入口列表选择每个默认页。恰好一个入
 
 本决策取代[随包类型](2026-09-05-sidebar-text-preview-and-file-tree.zh.md)中的默认引导选择，以及[停靠基础设施](2026-09-04-right-sidebar-docking-infrastructure.zh.md)中的显式关闭最后一个 tab。它们的注册、内容状态、引擎与布局所有权决策继续有效。
 
+上述选择规则由[Sidebar 默认页顺序](2026-09-13-sidebar-default-page-order.zh.md)取代：order 最小的引导入口即默认页。关闭保护归属与每格至多一个引导页的规则继续有效。
+
 ## 考虑过的替代方案
 
 **统计所有已注册 tab 类型或已打开的 tab。** 两者都不代表引导页提供的选择；资源查看器不一定贡献入口。

@@ -119,6 +119,26 @@
     - id: workspace-controller
       name: '@deepseek-ai/dsh-api-workspace-controller'
 
+    # Interactive terminals: the Session-scoped registry, the local shell
+    # provider, and the Remote the browser drives them through. This is the
+    # host plane because the browser is the owner — it is not a model tool, so
+    # it does not move behind an agent preset.
+    - id: terminal-interactive
+      name: '@deepseek-ai/dsh-terminal-interactive'
+      config:
+        maxBufferedBytes: 1048576
+
+    - id: terminal-interactive-local
+      name: '@deepseek-ai/dsh-terminal-interactive-local'
+      config:
+        providerType: shell
+        shellDialect: !!js "process.platform === 'win32' ? 'pwsh' : 'bash'"
+
+    - id: terminal-controller
+      name: '@deepseek-ai/dsh-api-terminal-controller'
+      config:
+        type: shell
+
     - id: cordis-host-runner
       name: '@deepseek-ai/dsh-cordis-host-runner'
 
@@ -233,6 +253,11 @@
     # The right Sidebar's workspace file tree tab type.
     - id: ui-sidebar-files
       name: '@deepseek-ai/dsh-client-ui-sidebar-files'
+
+    # The right Sidebar's interactive terminal tab type, over the `terminals`
+    # Remote namespace the host rows above provide.
+    - id: ui-terminal
+      name: '@deepseek-ai/dsh-client-ui-terminal'
 
     - id: ui-settings
       name: '@deepseek-ai/dsh-client-ui-settings'
