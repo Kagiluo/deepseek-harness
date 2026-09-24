@@ -630,7 +630,7 @@ export interface ColorRole {
 
 Depends on: `Volatile` (`@deepseek-ai/cordis`)
 
-来源： [`packages/client/ui-theme-nord/src/index.ts:52`](../packages/client/ui-theme-nord/src/index.ts)
+来源： [`packages/client/ui-theme-nord/src/index.ts:54`](../packages/client/ui-theme-nord/src/index.ts)
 
 <a id="deepseek-aidsh-compaction-basic"></a>
 
