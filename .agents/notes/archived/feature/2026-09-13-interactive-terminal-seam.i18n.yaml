@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-13-interactive-terminal-seam.md
-2026-09-13-interactive-terminal-seam.md: 697c19cafc1365ce07262db5bcb4c9e32c0a14ae
-2026-09-13-interactive-terminal-seam.zh.md: fa5421925f8806287b5c6e28bd5dcaea9df9d681
+2026-09-13-interactive-terminal-seam.md: 196c511852f1a0f8d2b7e1ebfbc1d62d06303520
+2026-09-13-interactive-terminal-seam.zh.md: 19af242bdcde5e926c224e8ecab6b10a0beac985

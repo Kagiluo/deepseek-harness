@@ -1,6 +1,7 @@
 # Agent Note：由浏览器驱动的交互式终端作为一个归会话所有的 seam
 
 Status: implemented
+Archived: 2026-09-24
 
 [English](2026-09-13-interactive-terminal-seam.md) | 中文
 

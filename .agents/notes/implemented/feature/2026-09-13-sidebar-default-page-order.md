@@ -37,4 +37,4 @@ The default page is no longer readable from the entry count, so a composition th
 - [Sidebar default pages](2026-09-08-sidebar-default-pages.md) — the selection rule this note replaces; its close-protection ownership and one-guide-per-pane rules remain active.
 - [Sidebar and preview interaction polish](2026-09-09-sidebar-and-preview-interaction-polish.md) — lazy seeding on expansion, unchanged.
 - [Sidebar text preview and file tree](2026-09-05-sidebar-text-preview-and-file-tree.md) — the page-type template this rule selects among.
-- [Interactive terminal seam](2026-09-13-interactive-terminal-seam.md) — the tab that contributed the second door.
+- [Web sidebar terminals](2026-09-09-web-sidebar-terminal.md) — the tab that contributed the second door.

@@ -37,4 +37,4 @@ Status: implemented
 - [Sidebar 默认页](2026-09-08-sidebar-default-pages.zh.md)——本笔记取代的选择规则；其关闭保护归属与每格至多一个引导页的规则继续有效。
 - [Sidebar 与预览交互打磨](2026-09-09-sidebar-and-preview-interaction-polish.zh.md)——展开时惰性播种，未变。
 - [Sidebar 文本预览与文件树](2026-09-05-sidebar-text-preview-and-file-tree.zh.md)——本规则在其中做选择的页面类型模板。
-- [交互式终端 seam](2026-09-13-interactive-terminal-seam.zh.md)——贡献第二扇门的那个 tab。
+- [Web sidebar 终端](2026-09-09-web-sidebar-terminal.zh.md)——贡献第二扇门的那个 tab。
