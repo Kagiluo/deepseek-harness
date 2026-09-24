@@ -68,7 +68,12 @@ export interface ResolvedSchedulerTask {
 
 declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap {
-    /** Programmatic input admitted by one scheduled task occurrence. */
+    /** Programmatic input admitted by one scheduled task occurrence. A reader
+     * without this producer keeps the unknown kind and its metadata and needs no
+     * validation, replay, or authority from it; the projection reads the recorded
+     * task and occurrence as attribution.
+     * @persistenceAttribution
+     */
     scheduler: {
       readonly kind: 'scheduler'
       /** Configured task id that produced this message. */

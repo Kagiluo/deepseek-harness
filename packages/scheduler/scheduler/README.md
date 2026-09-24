@@ -96,7 +96,7 @@ The plugin declares `inject = ['agents', 'agentDefaultModel', 'permissionPresets
 
 The package rests on one separation and three commitments:
 
-- **No durable schedule state.** The Sessions a run creates are the only durable record. There is no catch-up queue, no missed-occurrence log, and no persisted last-fired marker, so the plugin cannot drift from its own history.
+- **No durable schedule state.** The Sessions a run creates are the only durable record. There is no catch-up queue, no missed-occurrence log, and no persisted last-fired marker, so the plugin cannot drift from its own history. The recorded message source is attribution only: a reader without this plugin keeps the `scheduler` kind and its metadata and needs no validation, replay, or authority from it.
 - **Pure occurrence arithmetic.** `nextOccurrence` reads no clock: callers pass `now`, so every wake re-derives from the wall clock and a system adjustment or daylight-saving transition cannot leave a stale target armed.
 - **Structure validated at load and on every re-arm, references resolved at arming.** A task's id, time, zone, and weekdays are checked whenever the plugin arms the list, including a list edited outside the settings page. Its workspace directory, permission preset, and agent preset roster are resolved on the same pass, so an unusable reference skips that one task and leaves the rest running.
 - **Unattended by construction.** A scheduled run has nobody to answer an approval request, so a preset whose policy is not `never` is refused at arm time rather than allowed to park a run indefinitely.
