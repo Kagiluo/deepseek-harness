@@ -5970,6 +5970,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ResumeAgentOptions {\n    readonly resumeSessionId: SessionId;\n    readonly parentAgent?: Agent;\n    readonly agentOptions?: AgentOptions;\n    readonly signal?: AbortSignal;\n    readonly setup?: AgentSetup;\n}',
   },
   {
+    name: 'Role',
+    declaration: 'export type Role = typeof ROLES[number];',
+  },
+  {
     name: 'RpcId',
     declaration: 'export type RpcId = Branded<\'rpc-id\'>;',
   },

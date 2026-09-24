@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
-import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client'
+import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client'
 import { DEFAULT_PALETTE, type ColorRole } from '../src/palette.ts'
 import { DEFAULT_WALLPAPER_OPACITY, type NordSection } from '../src/section.ts'
 import { apply, inject, name } from '../src/client/index.ts'
@@ -32,30 +32,19 @@ const SECTION: NordSection = {
   wallpaperOpacity: DEFAULT_WALLPAPER_OPACITY,
 }
 
-/** A settings scope whose stored values the bench updates directly. */
-function scopeStub(value: NordSection = SECTION) {
-  let current = value
-  let user: Record<string, unknown> = {}
-  const listeners = new Set<() => void>()
-  const writes: { field: string; value: unknown }[] = []
-  const scope = {
-    writes,
-    set current(next: NordSection) { current = next; for (const listener of listeners) listener() },
-    getSnapshot: () => ({ status: 'ready' as const, writable: true, value: current, base: SECTION, user }),
-    set: async (field: string, next: unknown): Promise<void> => {
-      writes.push({ field, value: next })
-      user = { ...user, [field]: next }
-      current = { ...current, [field]: next } as NordSection
-      for (const listener of listeners) listener()
-    },
-    unset: async (field: string): Promise<void> => {
-      const { [field]: _dropped, ...rest } = user
-      user = rest
-      for (const listener of listeners) listener()
-    },
-    subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener) } },
+/** A settings form standing at the section a deployment that has written nothing resolves to. */
+function formStub(): ConfigForm<NordSection> {
+  return {
+    getSnapshot: () => ({
+      status: 'ready' as const, writable: true, value: SECTION, base: SECTION, user: {}, revision: 0, mode: 'host' as const,
+    }),
+    // These specs exercise the background-image flow, which stages a pick and
+    // never saves; the palette write paths are covered by theme.client.spec.ts.
+    set: async (): Promise<boolean> => true,
+    unset: async (): Promise<boolean> => true,
+    mutate: async (): Promise<boolean> => true,
+    subscribe: () => () => {},
   }
-  return scope
 }
 
 /**
@@ -78,8 +67,8 @@ async function bench(options: { namespace?: boolean } = {}) {
       return () => {}
     },
   })
-  const scope = scopeStub()
-  ctx.provide('settingsScope', { bind: () => scope as unknown as SettingsScope<NordSection> })
+  const requested: string[] = []
+  ctx.provide('configForms', { get: (id: string) => { requested.push(id); return formStub() } })
 
   const puts: { mediaType: string; base64: string }[] = []
   const namespace = {
@@ -102,7 +91,7 @@ async function bench(options: { namespace?: boolean } = {}) {
   )
   const fiber = ctx.plugin({ inject: [...inject], apply })
   await fiber.await()
-  return { ctx, slots, locale, scope, layers, puts, host, fiber }
+  return { ctx, slots, locale, requested, layers, puts, host, fiber }
 }
 
 /** Stand in for the settings shell: declare the Plugins tab slot from root. */
@@ -115,8 +104,15 @@ function declareTab(slots: SlotRegistry): () => void {
 
 describe('the plugin apply', () => {
   it('declares the services it reads', () => {
-    expect(inject).toEqual(['theme', 'slots', 'locale', 'remote', 'settingsScope'])
+    expect(inject).toEqual(['theme', 'slots', 'locale', 'remote', 'configForms'])
     expect(name).toBe('@deepseek-ai/dsh-client-ui-theme-nord')
+  })
+
+  it('reads its settings form by the Loader entry id', async () => {
+    const b = await bench()
+    expect(b.requested).toEqual(['ui-theme-nord'])
+    // Leave the document as the next spec expects to find it.
+    await b.fiber.dispose()
   })
 
   it('stacks one override layer, installs its stylesheet, and registers the tab', async () => {
@@ -184,7 +180,7 @@ describe('the plugin apply', () => {
     const locale = new LocaleRuntime(ctx)
     ctx.provide('locale', locale)
     ctx.provide('theme', { overrideTokens: () => () => {} })
-    ctx.provide('settingsScope', { bind: () => scopeStub() as unknown as SettingsScope<NordSection> })
+    ctx.provide('configForms', { get: () => formStub() })
     ctx.provide('remote', {})
     ctx.provide('remote.themeWallpaper', {})
     const slots = ctx.get('slots') as SlotRegistry

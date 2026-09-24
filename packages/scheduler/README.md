@@ -25,7 +25,7 @@ The Scheduler family runs a prompt by itself at a time you choose. At each confi
 | Package | Role | ctx key |
 |---|---|---|
 | [`scheduler/`](scheduler/README.md) | Daily wall-clock arming and the unattended Session transaction | consumes `ctx.agents`, `ctx.workspaceRegistry`, `ctx.sessionTitle`, `ctx.permissionPresets`, `ctx.agentDefaultModel`, `ctx.sessions` |
-| [`../client/ui-scheduler/`](../client/ui-scheduler/README.md) | The Scheduled tasks settings page over the `scheduler` namespace | consumes `ctx.settingsScope`, `ctx.settingsSchema`, `ctx.remote`, `ctx.workspaces` |
+| [`../client/ui-scheduler/`](../client/ui-scheduler/README.md) | The Scheduled tasks settings page over the `scheduler` settings entry | consumes `ctx.configForms`, `ctx.remote`, `ctx.workspaces` |
 
 <a id="related-documentation"></a>
 ## Related documentation

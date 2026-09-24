@@ -10,11 +10,12 @@ Source: [`packages/scheduler/scheduler/src/types.ts`](../../packages/scheduler/s
 
 ```ts type-equiv
 /**
- * One daily wall-clock task. Structure is validated wherever the task is
- * authored; the references it names are resolved when it is armed.
+ * One daily wall-clock task. Its structure — id, time, zone, and weekdays — is
+ * validated when the plugin loads and on every re-arm; the references it names
+ * are resolved when it is armed.
  */
 interface SchedulerTask {
-  /** Stable task id naming this task in diagnostics, its Session title, and message provenance. */
+  /** Stable task id naming this task in diagnostics, its Session title, and the scheduler metadata on the messages it admits. */
   readonly id: string
   /**
    * Whether this task is armed. Omission means enabled; `false` pauses the task
@@ -32,7 +33,7 @@ interface SchedulerTask {
    * Weekdays this task runs on, `0` (Sunday) through `6` (Saturday). Omission
    * runs it every day. An empty list is refused, because it never runs.
    */
-  readonly weekdays?: number[]
+  readonly weekdays?: readonly number[]
   /** Prompt text admitted as the created Session's first turn. */
   readonly prompt: string
   /**
@@ -94,10 +95,10 @@ interface DailySchedule {
 
 ## Structure versus references
 
-A task's structure — its id, wall-clock time, zone, and weekdays — cannot change while the process runs, so an impossible one is refused where it is authored. Everything a task references — its workspace directory, its permission preset, and its agent preset roster — can change, so an unusable reference keeps that one task out of the arm set and leaves the rest of the schedule running. Resolving a reference at write time would let a deleted directory refuse the whole mount on the next boot.
+A task's structure — its id, wall-clock time, zone, and weekdays — is validated when the plugin loads and again on every re-arm, because a stored task list can also be edited outside the page that authored it. Everything a task references — its workspace directory, its permission preset, and its agent preset roster — is resolved on that same re-arm, so an unusable reference keeps that one task out of the arm set and leaves the rest of the schedule running. Resolving a reference at write time would let a deleted directory refuse the whole mount on the next boot.
 
 ## Arming, occurrence, and release
 
 `TaskRuntime` arms one bounded `setTimeout` segment toward the next occurrence and re-reads the wall clock on every wake, so a system clock adjustment or a daylight-saving transition cannot leave a stale target armed. The target is always strictly in the future, which is what makes a time missed while the process was down skipped rather than replayed. A run still in flight when its own next occurrence arrives makes that occurrence overdue, and it is skipped the same way.
 
-One occurrence creates one root Session in the task's workspace, applies the permission preset and title, admits the prompt as an ordinary user-role message carrying `kind: "scheduler"` provenance, waits for the turn to settle inside a one-hour deadline, and disposes the Agent. A failure before the prompt is admitted detaches the workspace and disposes the Agent; a failure after admission is the run's own durable outcome and is not rolled back.
+One occurrence creates one root Session in the task's workspace, applies the permission preset and title, admits the prompt as an ordinary user-role message carrying `kind: "scheduler"`, waits for the turn to settle inside a one-hour deadline, and disposes the Agent. A failure before the prompt is admitted detaches the workspace and disposes the Agent; a failure after admission is the run's own durable outcome and is not rolled back.

@@ -16,7 +16,7 @@ The distribution route is the harder half. The Desktop installer accepts only `r
 
 The palette is ten roles per color scheme — base background, three surface levels, text, two brand accents, and the three states. `buildTokens` derives every `--dsw-alias-*` and `--dsw-specific-*` token the ui-theme sheets declare from those roles, and the browser half stacks the result as one override layer on `ctx.theme`, so retuning one role moves every surface that reads it, and switching Appearance between light and dark keeps working.
 
-The tuner is the Plugins section's tab. Edits are staged: each one rebuilds the layer so the window follows the color picker immediately, while the settings document is written only when the user saves. The settings scope stays the authority — the controller reads accepted values back from the section instead of predicting them, so a rejected write remains visible as an unsaved draft.
+The tuner is the Plugins section's tab. Edits are staged: each one rebuilds the layer so the window follows the color picker immediately, while the settings document is written only when the user saves. The Host document stays the authority — the browser half reads the accepted values back from its `configForms` form instead of predicting them, so a rejected write remains visible as an unsaved draft. The Host half declares that Config with every palette role volatile, which is what makes the roles editable fields under the row's entry id, and it opts out of the settings service's automatic form because the tab owns the layout.
 
 The background image is stored outside the settings document. The Host half accepts base64 bytes over a Remote namespace (`themeWallpaper`), validates the media type and an 8 MiB cap, and writes them under `$DSH_HOME/theme-wallpaper/{sha256}` with a `.type` sibling; the settings document carries only the hash and the media type, so neither the settings wire nor the durable document moves image bytes. The image reference is saved with the rest of the tab while the bytes are stored as soon as the user picks them, because the store is content-addressed: a discarded pick leaves an unreferenced file rather than a wrong background.
 
@@ -40,7 +40,7 @@ The plugin is Desktop-only in practice: it is a family package, but its row and 
 
 ## Testing
 
-`tests/theme.host.spec.ts` covers the Host half: the schema defaults, the section install, a content-addressed round trip, repeat stores of one image, and the refusals (unsupported media type, empty body, past the cap, a missing id). `tests/theme.client.spec.ts` covers the token derivation against the ui-theme sheet, the wallpaper token algebra, and the tuner's staging: preview without write, save, discard, removal, opacity, a failed store, an unreadable stored image, and the layer's release on dispose.
+`tests/theme.host.spec.ts` covers the Host half: the schema defaults, the volatile marker on every editable field, the requested plugin-owned page, a content-addressed round trip, repeat stores of one image, and the refusals (unsupported media type, empty body, past the cap, a missing id). `tests/theme.client.spec.ts` covers the token derivation against the ui-theme sheet, the wallpaper token algebra, and the tuner's staging: preview without write, save, discard, removal, opacity, a failed store, an unreadable stored image, and the layer's release on dispose.
 
 ## Related
 

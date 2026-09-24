@@ -1,13 +1,13 @@
 /**
  * ui-scheduler browser half on a real cordis Context: the plugin registers the
  * `settings.section` entry and its dictionaries against the real settings
- * domain base, projects the accepted namespace onto a draft, and removes every
- * contribution when its fiber disposes.
+ * domain base, projects the accepted `scheduler` configuration form onto a
+ * draft, and removes every contribution when its fiber disposes.
  *
- * The Host faces are the shared Remote double, so the settings scope, the
- * mirror, and the schema service under test are the shipped ones; only the
- * answers are scripted. The namespace schema comes from the Host package's own
- * builder, which pins what the page introspects to what the Host advertises.
+ * The Host faces are the shared Remote double, so the configuration forms, the
+ * describe mirror, and the schema service under test are the shipped ones; only
+ * the answers are scripted. The namespace schema is the Host package's own
+ * `Config`, which is what the Host publishes as this entry's settings form.
  */
 
 import { Context, Service } from '@deepseek-ai/cordis'
@@ -16,8 +16,7 @@ import { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { TestRemote } from '@deepseek-ai/dsh-client-test-runtime'
 import { apply as settingsApply, inject as settingsInject } from '@deepseek-ai/dsh-client-ui-settings/client'
-import { schedulerSettingsSchema } from '@deepseek-ai/dsh-scheduler'
-import z from '@deepseek-ai/schemastery'
+import { Config } from '@deepseek-ai/dsh-scheduler'
 import type { SchedulerTask } from '@deepseek-ai/dsh-scheduler'
 import { SchedulerSection, type SchedulerSectionInjected } from '../src/client/SchedulerSection.tsx'
 import { apply, inject, SCHEDULER_SETTINGS_NS } from '../src/client/index.ts'
@@ -36,25 +35,11 @@ function task(overrides: Partial<SchedulerTask> = {}): SchedulerTask {
   }
 }
 
-/** The serialized namespace schema the Host publishes for this deployment. */
-function envelope(eligible: readonly string[] = ['unattended', 'full-access']): unknown {
-  return schedulerSettingsSchema(eligible).toJSON()
-}
-
-/**
- * The same namespace with a wider permission union: a constant, a plain string,
- * and a non-string constant that the picker must skip.
- * @returns the serialized envelope.
- */
-function widenedEnvelope(): unknown {
-  const task = z.object({
-    id: z.string().required(),
-    workspacePath: z.string().required(),
-    time: z.string().required(),
-    prompt: z.string().required(),
-    permissionPreset: z.union([z.const('unattended'), z.string(), z.const(7)]).required(),
-  })
-  return z.object({ tasks: z.array(task).default([]) }).toJSON()
+/** One advertised permission preset as the Remote catalog reports it. */
+interface CatalogOption {
+  value: string
+  name: string
+  description?: string
 }
 
 /** Options a test uses to reach one deployment's shape. */
@@ -65,14 +50,12 @@ interface BenchOptions {
   workspaces?: { workspaceId: string; path: string; title: string }[] | null
   /** Omit the `scheduler` namespace from the describe answer. */
   exposeNamespace?: boolean
-  /** The preset-union members to advertise. */
-  eligible?: readonly string[]
-  /** A raw serialized schema to publish instead of the built envelope. */
-  rawSchema?: unknown
   /** Return a failed describe answer. */
   describeFailure?: boolean
   /** The roster answer, or a failed read. */
   presets?: { id: string; name?: string; broken?: string }[] | 'fail'
+  /** The permission catalog options, or a failed read. */
+  permissionPresets?: CatalogOption[] | 'fail'
 }
 
 /** Bring up the plugin over a real slot registry, locale runtime, and settings base. */
@@ -83,8 +66,9 @@ async function bench(initialTasks: SchedulerTask[] = [], options: BenchOptions =
   locale.setLocale('en')
   ctx.provide('locale', locale)
 
-  const eligible = options.eligible ?? ['unattended', 'full-access']
-  const schema = options.rawSchema ?? envelope(eligible)
+  // The Host publishes this entry's settings form as its volatile-stripped
+  // Config schema; the shipped `Config` is the same declaration.
+  const schema = Config.toJSON()
   const writes: { ns: string; ops: unknown; revision: number | undefined }[] = []
   const describeCall = vi.fn(() => Promise.resolve(options.describeFailure === true
     ? { ok: false as const, error: { code: 'gateway/internal' as const, message: 'describe down' } }
@@ -94,32 +78,53 @@ async function bench(initialTasks: SchedulerTask[] = [], options: BenchOptions =
         writable: options.writable ?? true,
         hasDocument: true,
         namespaces: options.exposeNamespace === false ? [] : [{
+          autoGenerate: false,
           ns: SCHEDULER_SETTINGS_NS,
           schema,
           value: { tasks: initialTasks },
+          base: { tasks: [] },
+          user: undefined,
           applies: 'live' as const,
           secrets: [],
           revision: 1,
         }],
       },
     }))
-  const mutateCall = vi.fn((ns: string, ops: unknown, revision: number) => {
+  const mutateCall = vi.fn((ns: string, ops: { op: string; path: string[]; value?: unknown }[], revision: number | undefined) => {
     writes.push({ ns, ops, revision })
+    // The settings wire replaces the addressed field's value, so the answered
+    // section carries what the page submitted.
+    const set = ops.find(op => op.op === 'set' && op.path.length === 1 && op.path[0] === 'tasks')
+    const tasks = set?.value ?? []
     return Promise.resolve({
       ok: true as const,
       value: {
+        autoGenerate: false,
         ns,
         schema,
-        value: { tasks: [] },
+        value: { tasks },
+        base: { tasks: [] },
+        user: { tasks },
         applies: 'live' as const,
         secrets: [],
-        revision: revision + 1,
+        revision: (revision ?? 0) + 1,
       },
     })
   })
+  const catalog = options.permissionPresets ?? [
+    { value: 'unattended', name: 'unattended' },
+    { value: 'full-access', name: 'full-access' },
+  ]
+  const catalogCall = vi.fn(() => Promise.resolve(catalog === 'fail'
+    ? { ok: false as const, error: { code: 'gateway/internal' as const, message: 'catalog down' } }
+    : {
+      ok: true as const,
+      value: { options: catalog, defaultOptions: catalog, defaultPreset: 'unattended' },
+    }))
   const roster = options.presets ?? []
   const remote = new TestRemote(ctx, {
     settings: { describe: describeCall, mutate: mutateCall },
+    permissionPresets: { catalog: catalogCall },
     agentPresets: {
       list: () => Promise.resolve(roster === 'fail'
         ? { ok: false as const, error: { code: 'gateway/internal' as const, message: 'roster down' } }
@@ -169,7 +174,7 @@ async function bench(initialTasks: SchedulerTask[] = [], options: BenchOptions =
     return typeof declared === 'function' ? declared() : declared
   }
   return {
-    ctx, fiber, locale, remote, writes, describeCall, section, injected, label,
+    ctx, fiber, locale, remote, writes, describeCall, catalogCall, section, injected, label,
     state: (): SchedulerTasksState => injected().hooks.schedulerTasks.getSnapshot(),
   }
 }
@@ -199,7 +204,7 @@ describe('ui-scheduler browser plugin', () => {
     expect(b.state().writable).toBe(true)
   })
 
-  it('reads the unattended permission presets out of the Host schema', async () => {
+  it('offers the permission presets the host advertises', async () => {
     const b = await bench()
     await vi.waitFor(() => { expect(b.state().permissionPresets).toHaveLength(2) })
     expect(b.state().permissionPresets).toEqual([
@@ -208,15 +213,15 @@ describe('ui-scheduler browser plugin', () => {
     ])
   })
 
-  it('leaves the preset picker empty when the deployment advertises no union', async () => {
-    const b = await bench([], { eligible: [] })
+  it('leaves the permission picker empty when the host advertises none', async () => {
+    const b = await bench([], { permissionPresets: [] })
     await vi.waitFor(() => { expect(b.state().status).toBe('ready') })
     expect(b.state().permissionPresets).toEqual([])
   })
 
-  it('leaves the preset picker empty before any describe answer lands', async () => {
-    // No namespace is exposed at all, so the schema walk finds nothing to read.
-    const b = await bench([], { exposeNamespace: false })
+  it('leaves the permission picker empty when the catalog read fails', async () => {
+    const b = await bench([], { permissionPresets: 'fail' })
+    await vi.waitFor(() => { expect(b.state().status).toBe('ready') })
     expect(b.state().permissionPresets).toEqual([])
   })
 
@@ -255,12 +260,15 @@ describe('ui-scheduler browser plugin', () => {
     expect(b.state().presets).toEqual([])
   })
 
-  it('reports an unavailable namespace while the describe read keeps failing', async () => {
+  it('keeps reporting an unresolved namespace while the describe read keeps failing', async () => {
     const b = await bench([], { describeFailure: true })
-    await vi.waitFor(() => {
-      expect(b.state().status === 'loading' || b.state().status === 'unavailable').toBe(true)
-    })
-    expect(b.state().permissionPresets).toEqual([])
+    await vi.waitFor(() => { expect(b.describeCall).toHaveBeenCalled() })
+    expect(b.state().status === 'loading' || b.state().status === 'unavailable').toBe(true)
+  })
+
+  it('reports an unserved namespace as unavailable', async () => {
+    const b = await bench([], { exposeNamespace: false })
+    await vi.waitFor(() => { expect(b.state().status).toBe('unavailable') })
   })
 
   it('submits the whole draft as one atomic mutation in the scheduler namespace', async () => {
@@ -275,6 +283,7 @@ describe('ui-scheduler browser plugin', () => {
     expect(b.writes[0]?.ops).toEqual([
       { op: 'set', path: ['tasks'], value: [task({ prompt: 'edited by the page' })] },
     ])
+    expect(b.state().dirty).toBe(false)
   })
 
   it('adds a task through the inject face and exposes the draft for the renderer', async () => {
@@ -300,24 +309,23 @@ describe('ui-scheduler browser plugin', () => {
     expect(b.state().dirty).toBe(false)
   })
 
-  it('refreshes the pickers when the host reports a settings document change', async () => {
+  it('refreshes the pickers when the host reports this entry changed', async () => {
     const b = await bench()
-    await vi.waitFor(() => { expect(b.state().status).toBe('ready') })
-    // The forwarded event is what an external edit announces; an unrelated
-    // namespace must not throw either.
+    await vi.waitFor(() => { expect(b.catalogCall).toHaveBeenCalledTimes(1) })
+    // An unrelated namespace must not trigger the read...
     b.remote.emit('settings/document-updated', ['another', 1])
+    expect(b.catalogCall).toHaveBeenCalledTimes(1)
+    // ...while this entry's own change does. The refresh reads the catalogs in
+    // sequence, so the second read lands a microtask later.
     b.remote.emit('settings/document-updated', [SCHEDULER_SETTINGS_NS, 2])
-    await vi.waitFor(() => { expect(b.state().status).toBe('ready') })
-    expect(b.state().permissionPresets).toHaveLength(2)
+    await vi.waitFor(() => { expect(b.catalogCall).toHaveBeenCalledTimes(2) })
   })
 
-  it('skips a union member that is not an advertised constant', async () => {
-    // A deployment may widen its permission field to a union that also admits a
-    // plain string; the page offers only the constants it can name, so the
-    // widened member is skipped rather than listed as a bogus choice.
-    const b = await bench([], { rawSchema: widenedEnvelope() })
-    await vi.waitFor(() => { expect(b.state().status).toBe('ready') })
-    expect(b.state().permissionPresets).toEqual([{ id: 'unattended', name: 'unattended' }])
+  it('refreshes the permission picker when the host reports a catalog change', async () => {
+    const b = await bench()
+    await vi.waitFor(() => { expect(b.catalogCall).toHaveBeenCalledTimes(1) })
+    b.remote.emit('permission-presets/catalog-changed', [])
+    await vi.waitFor(() => { expect(b.catalogCall).toHaveBeenCalledTimes(2) })
   })
 
   it('removes the entry and its dictionaries when the fiber disposes', async () => {
@@ -329,24 +337,25 @@ describe('ui-scheduler browser plugin', () => {
 })
 
 describe('ui-scheduler Remote namespace declaration', () => {
-  it('names remote.agentPresets in its injection set, not just remote', () => {
+  it('names each generated Remote namespace in its injection set, not just remote', () => {
     // A generated Remote namespace is its own service, registered by the
     // sibling api-remotes fiber. The `ctx.remote` property proxy resolves a
     // namespace only when that dotted name is in the consumer's injection set;
     // `remote` alone leaves the read throwing "cannot get property
     // remote.agentPresets without inject", which the picker's failure handler
-    // turns into an empty agent-preset list. Injection sets are static, so the
-    // declaration is what this pins.
+    // turns into an empty list. Injection sets are static, so the declaration
+    // is what this pins.
     expect(inject).toContain('remote')
     expect(inject).toContain('remote.agentPresets')
+    expect(inject).toContain('remote.permissionPresets')
   })
 
-  it('resolves the namespace when it is registered by a sibling fiber', async () => {
+  it('resolves the namespaces when they are registered by a sibling fiber', async () => {
     // The shared Remote double registers `remote.<name>` on the root context,
     // which resolves even without the dotted inject and so cannot see this
-    // defect. Production registers the namespace underneath api-remotes, so
-    // this bench reproduces that topology: the read succeeds only when the
-    // fiber's injection set names the dotted service.
+    // defect. Production registers the namespaces underneath api-remotes, so
+    // this bench reproduces that topology: the reads succeed only when the
+    // fiber's injection set names the dotted services.
     class FakeRemote extends Service {
       /** Forwarded-event sink; this bench drives no host events. */
       $on(): () => void { return () => {} }
@@ -357,25 +366,38 @@ describe('ui-scheduler Remote namespace declaration', () => {
         return Promise.resolve({ ok: true, value: { presets: [{ id: 'standard', name: 'Standard' }] } })
       }
     }
+    class FakePermissionPresets extends Service {
+      /** @returns one catalog with a single preset. */
+      catalog(): Promise<unknown> {
+        return Promise.resolve({ ok: true, value: { options: [{ value: 'unattended', name: 'Unattended' }] } })
+      }
+    }
     const ctx = new Context()
     new FakeRemote(ctx, 'remote')
     const sibling = ctx.plugin({
       name: 'api-remotes-fixture',
-      apply: (c: Context) => { new FakeAgentPresets(c, 'remote.agentPresets') },
+      apply: (c: Context) => {
+        new FakeAgentPresets(c, 'remote.agentPresets')
+        new FakePermissionPresets(c, 'remote.permissionPresets')
+      },
     })
     await sibling.await()
 
     let outcome = 'NOT RUN'
     const consumer = ctx.plugin({
       name: 'consumer',
-      inject: inject.filter(name => name === 'remote' || name === 'remote.agentPresets'),
+      inject: inject.filter(name => name === 'remote' || name.startsWith('remote.')),
       apply: async (c: Context) => {
-        // Read through the same property path the plugin uses.
-        const ns = (c.remote as unknown as { agentPresets: { list(): Promise<unknown> } }).agentPresets
-        outcome = JSON.stringify(await ns.list())
+        // Read through the same property paths the plugin uses.
+        const namespaces = c.remote as unknown as {
+          agentPresets: { list(): Promise<unknown> }
+          permissionPresets: { catalog(): Promise<unknown> }
+        }
+        outcome = JSON.stringify([await namespaces.agentPresets.list(), await namespaces.permissionPresets.catalog()])
       },
     })
     await consumer.await()
     expect(outcome).toContain('standard')
+    expect(outcome).toContain('unattended')
   })
 })

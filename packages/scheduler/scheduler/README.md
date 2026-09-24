@@ -51,7 +51,7 @@ Choose Scheduler for work that must start on its own at a wall-clock time and le
 
 | Field | Default | Meaning |
 |---|---|---|
-| `id` | `required` | Stable id; unique across tasks, names the Session title, and travels on the prompt's provenance |
+| `id` | `required` | Stable id; unique across tasks, names the Session title, and travels as the prompt message's scheduler metadata |
 | `workspacePath` | `required` | Absolute path of an existing directory the Session runs in |
 | `time` | `required` | Local wall-clock time of day, `HH:MM:SS` in 24-hour form |
 | `prompt` | `required` | Text admitted as the created Session's first message |
@@ -66,9 +66,9 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 
 ### Authoring tasks in the GUI
 
-The companion package [`@deepseek-ai/dsh-client-ui-scheduler`](../../client/ui-scheduler/README.md) adds a **Scheduled tasks** page to Settings. It edits a local draft and submits the whole task list as one write, so a half-typed task is never stored. The page validates the same structure the host refuses, so a structurally impossible task cannot be saved at all. Its permission-preset picker offers exactly the presets this deployment can run unattended, and it reads that list from the host's own schema rather than restating the policy.
+The companion package [`@deepseek-ai/dsh-client-ui-scheduler`](../../client/ui-scheduler/README.md) adds a **Scheduled tasks** page to Settings. It edits a local draft and submits the whole task list as one write, so a half-typed task is never stored. The page reports the structural rules it can check before writing, but the settings wire accepts only the field schema: `validateTaskStructure` runs when the plugin loads and on every re-arm, so a structurally impossible list that reaches storage leaves the previous arm set running and is reported in the process log instead of being refused at the write. Its permission-preset picker offers every preset the deployment advertises, and a preset whose approval policy is not `never` is refused when the task is armed.
 
-A deployment with no Web surface can set tasks from `Config` alone: the plugin reads the optional settings service through `ctx.get`, so a headless composition schedules without one.
+A deployment with no Web surface can set tasks from `Config` alone: the plugin injects the settings service conditionally only to opt out of the loader's generated form, so a headless composition schedules without one.
 
 ### When a task misses its time
 
@@ -90,7 +90,7 @@ This section explains the design decisions behind the plugin and points at the c
 
 ### Scope and composition
 
-The plugin declares `inject = ['agents', 'agentDefaultModel', 'permissionPresets', 'sessions', 'sessionTitle', 'workspaceRegistry']`, so a missing session-creation service is a composition error. `agentPresets` and `settings` are deliberately absent: a deployment may configure no roster, and a bare profile mounts no settings service, so both are read through `ctx.get`.
+The plugin declares `inject = ['agents', 'agentDefaultModel', 'permissionPresets', 'sessions', 'sessionTitle', 'workspaceRegistry']`, so a missing session-creation service is a composition error. `agentPresets` is deliberately absent: a deployment may configure no roster, and the plugin reads that optional service through `ctx.get`. `settings` is absent too, and injected conditionally only to opt out of the loader's generated settings form, because this package ships its own page.
 
 ### Design philosophy
 
@@ -98,7 +98,7 @@ The package rests on one separation and three commitments:
 
 - **No durable schedule state.** The Sessions a run creates are the only durable record. There is no catch-up queue, no missed-occurrence log, and no persisted last-fired marker, so the plugin cannot drift from its own history.
 - **Pure occurrence arithmetic.** `nextOccurrence` reads no clock: callers pass `now`, so every wake re-derives from the wall clock and a system adjustment or daylight-saving transition cannot leave a stale target armed.
-- **Structure validated at authoring, references resolved at arming.** A task's id, time, zone, and weekdays cannot change, so an impossible one is refused where it is written. Its workspace directory, permission preset, and agent preset roster can change, so an unusable reference skips that one task and leaves the rest running.
+- **Structure validated at load and on every re-arm, references resolved at arming.** A task's id, time, zone, and weekdays are checked whenever the plugin arms the list, including a list edited outside the settings page. Its workspace directory, permission preset, and agent preset roster are resolved on the same pass, so an unusable reference skips that one task and leaves the rest running.
 - **Unattended by construction.** A scheduled run has nobody to answer an approval request, so a preset whose policy is not `never` is refused at arm time rather than allowed to park a run indefinitely.
 
 ### Source map
@@ -109,15 +109,15 @@ The package rests on one separation and three commitments:
 | [`src/types.ts`](src/types.ts) | `SchedulerTask`, `ResolvedSchedulerTask`, and the prompt's `MessageSourceMap` declaration |
 | [`src/time.ts`](src/time.ts) | `HH:MM:SS` and zone validation, calendar normalization, and next-occurrence resolution |
 | [`src/config.ts`](src/config.ts) | The structure/reference split, `SchedulerConfigError`, and the arm set |
-| [`src/settings.ts`](src/settings.ts) | The `scheduler` settings namespace schema and unattended-preset selection |
+| [`src/settings.ts`](src/settings.ts) | The task field schema shared with the settings form, and the unattended-preset selection |
 | [`src/session.ts`](src/session.ts) | The per-occurrence Session transaction: create, attach, configure, prompt, drain, release |
 | [`src/runtime.ts`](src/runtime.ts) | `TaskRuntime`: the bounded, re-segmented timer and the single in-flight run |
 
 ### Arming and re-arming
 
-`apply` validates the configured structure once, then resolves the current task list and swaps the armed set. The swap is ordered so no occurrence can be missed or double-armed: the new runtimes are constructed first, the old ones are disposed, and only then does the new set start. A generation counter makes a superseded resolution — one whose `resolve` settled after a later change arrived — discard its own result instead of resurrecting a stale schedule.
+`apply` validates the configured structure, then resolves the current task list and swaps the armed set. The swap is ordered so no occurrence can be missed or double-armed: the new runtimes are constructed first, the old ones are disposed, and only then does the new set start. A generation counter makes a superseded resolution — one whose `resolve` settled after a later change arrived — discard its own result instead of resurrecting a stale schedule.
 
-When a settings service is present, the plugin installs the `scheduler` namespace as an optional consumer: the composition `config` is the base layer, a user's saved list replaces it, and every committed change re-arms without a restart. The section's write path reuses `validateTaskStructure`, so a structurally impossible task is refused at the write rather than armed and ignored.
+`Config.tasks` is volatile, so the `scheduler` loader entry carries the settings section as well as the composition base: a user's saved list replaces the shipped one, and the Loader commits a volatile-only change into the running config and announces it, which re-arms every task without a restart. This package ships its own page, so it opts out of the loader's generated form. Both the initial load and every re-arm call `validateTaskStructure`, so a stored list that cannot denote runnable occurrences is reported in the process log and the previous arm set keeps running.
 
 ### Time resolution
 

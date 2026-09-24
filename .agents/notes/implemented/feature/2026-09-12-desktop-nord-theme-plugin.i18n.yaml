@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-12-desktop-nord-theme-plugin.md
-2026-09-12-desktop-nord-theme-plugin.md: a313f5bd7f4ef83fc2d2a42cb5cd2425ba69fcd7
-2026-09-12-desktop-nord-theme-plugin.zh.md: cf165af1129a34bfef025412630f0293f28edfdf
+2026-09-12-desktop-nord-theme-plugin.md: 451f6f20fdb32ed2136b74f97e8df9d351cee7e1
+2026-09-12-desktop-nord-theme-plugin.zh.md: e4da42f3fa4b2db7bb6167220487e201152b2b8a

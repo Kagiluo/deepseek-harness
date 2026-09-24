@@ -15,7 +15,7 @@
  */
 
 import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
-import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client'
+import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client'
 import { buildTokens, DEFAULT_PALETTE, ROLES, type ColorRole, type Palette, type Role } from '../palette.ts'
 import { DEFAULT_WALLPAPER_OPACITY, type NordSection } from '../section.ts'
 import { wallpaperTokens, type WallpaperId, type WallpaperPort } from './wallpaper.ts'
@@ -125,7 +125,7 @@ function paintedIdentity(kind: 'stored' | 'staged', id: string, mediaType: strin
   return `${kind}\u0000${id}\u0000${mediaType}`
 }
 
-/** Bridges the `theme-nord` settings scope onto the theme service. */
+/** Bridges this plugin's settings form onto the theme service. */
 export class NordThemeController {
   private readonly drafts = new Map<Role, Draft>()
   private readonly store: SnapshotStore<NordThemeTabState>
@@ -148,17 +148,17 @@ export class NordThemeController {
   private disposed = false
 
   /**
-   * @param scope - the bound settings scope for this plugin's namespace.
+   * @param form - the settings form for this plugin's Loader entry.
    * @param theme - the theme service the layer is stacked on.
    * @param wallpaper - the port onto the Host image store.
    */
   constructor(
-    private readonly scope: SettingsScope<NordSection>,
+    private readonly form: ConfigForm<NordSection>,
     private readonly theme: OverrideTarget,
     private readonly wallpaper: WallpaperPort,
   ) {
     this.store = createSnapshotStore(this.projection())
-    scope.subscribe(() => {
+    form.subscribe(() => {
       this.syncPaintedWallpaper()
       this.applyLayer()
       this.publish()
@@ -242,25 +242,28 @@ export class NordThemeController {
     let landed = true
     for (const [role, draft] of [...this.drafts]) {
       if (draft.clear) {
-        await this.scope.unset(role)
+        await this.form.mutate([{ op: 'unset', path: [role] }])
         landed = !this.stored(role) && landed
       } else {
-        await this.scope.set(role, draft.pair)
+        await this.form.mutate([
+          { op: 'set', path: [role, 'light'], value: draft.pair.light },
+          { op: 'set', path: [role, 'dark'], value: draft.pair.dark },
+        ])
         landed = this.stored(role) && landed
       }
     }
     if (this.wallpaperDraft !== undefined && this.wallpaperDraft.removal) {
-      await this.scope.set('wallpaper', '')
-      await this.scope.set('wallpaperMediaType', '')
+      await this.form.set('wallpaper', '')
+      await this.form.set('wallpaperMediaType', '')
       landed = this.section().wallpaper === '' && landed
     } else if (this.wallpaperDraft?.id !== undefined) {
       const { id, mediaType } = this.wallpaperDraft
-      await this.scope.set('wallpaper', id)
-      await this.scope.set('wallpaperMediaType', mediaType)
+      await this.form.set('wallpaper', id)
+      await this.form.set('wallpaperMediaType', mediaType)
       landed = this.section().wallpaper === id && landed
     }
     if (this.wallpaperOpacityDraft !== undefined) {
-      await this.scope.set('wallpaperOpacity', this.wallpaperOpacityDraft)
+      await this.form.set('wallpaperOpacity', this.wallpaperOpacityDraft)
       landed = this.section().wallpaperOpacity === this.wallpaperOpacityDraft && landed
     }
     if (landed) {
@@ -435,12 +438,12 @@ export class NordThemeController {
 
   /** The resolved section, falling back to the defaults before it arrives. */
   private section(): NordSection {
-    return this.scope.getSnapshot().value ?? DEFAULT_SECTION
+    return this.form.getSnapshot().value ?? DEFAULT_SECTION
   }
 
   /** Whether the stored user layer carries one role. */
   private stored(role: Role): boolean {
-    const user = this.scope.getSnapshot().user as Record<string, unknown> | undefined
+    const user = this.form.getSnapshot().user as Record<string, unknown> | undefined
     return user !== undefined && Object.hasOwn(user, role)
   }
 
@@ -452,7 +455,7 @@ export class NordThemeController {
   }
 
   private projection(): NordThemeTabState {
-    const snapshot = this.scope.getSnapshot()
+    const snapshot = this.form.getSnapshot()
     return {
       available: snapshot.status === 'ready',
       writable: snapshot.writable,

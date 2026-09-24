@@ -6,9 +6,10 @@
  */
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client'
+import type { SettingsPathOpView } from '@deepseek-ai/dsh-api-remotes/client'
+import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client'
 import { describe, expect, it, vi } from 'vitest'
-import { buildTokens, DEFAULT_PALETTE, type ColorRole } from '../src/palette.ts'
+import { buildTokens, DEFAULT_PALETTE, ROLES, type ColorRole, type Role } from '../src/palette.ts'
 import { DEFAULT_WALLPAPER_OPACITY, type NordSection } from '../src/section.ts'
 import { NordThemeController } from '../src/client/nord-theme-controller.ts'
 import { wallpaperTokens, type WallpaperId, type WallpaperPort } from '../src/client/wallpaper.ts'
@@ -30,31 +31,84 @@ const DEFAULT_SECTION: NordSection = {
   wallpaperOpacity: DEFAULT_WALLPAPER_OPACITY,
 }
 
-/** A settings scope stub that records what the controller writes. */
-function scopeStub(initial: Partial<NordSection> = {}) {
-  let value = { ...DEFAULT_SECTION, ...initial }
-  let user: Record<string, unknown> = Object.fromEntries(Object.keys(initial).map(key => [key, true]))
+/** A settings form stub that applies accepted writes to the section it serves. */
+interface FormStub extends ConfigForm<NordSection> {
+  /** Top-level `set` calls, in order. */
+  readonly writes: { field: string; value: unknown }[]
+  /** Palette mutations, in order. */
+  readonly mutations: SettingsPathOpView[][]
+}
+
+/**
+ * Build a form stub standing at the section a Host serves.
+ * @param initial - stored user fields to open with.
+ * @returns the stub.
+ */
+function formStub(initial: Partial<NordSection> = {}): FormStub {
+  let value: NordSection = { ...DEFAULT_SECTION, ...initial }
+  let user: Record<string, unknown> = { ...initial }
   const listeners = new Set<() => void>()
-  const notify = (): void => { for (const listener of listeners) listener() }
   const writes: { field: string; value: unknown }[] = []
-  const unsets: string[] = []
+  const mutations: SettingsPathOpView[][] = []
+  const notify = (): void => { for (const listener of listeners) listener() }
+  const stage = (next: NordSection, nextUser: Record<string, unknown>): void => {
+    value = next
+    user = nextUser
+    notify()
+  }
+  const editPair = (role: Role, leaf: 'light' | 'dark', next: unknown): void => {
+    const pair: ColorRole = leaf === 'light'
+      ? { ...value[role], light: next as string }
+      : { ...value[role], dark: next as string }
+    const stored: ColorRole = leaf === 'light'
+      ? { ...user[role] as ColorRole | undefined, light: next as string }
+      : { ...user[role] as ColorRole | undefined, dark: next as string }
+    stage({ ...value, [role]: pair }, { ...user, [role]: stored })
+  }
   return {
     writes,
-    unsets,
-    getSnapshot: () => ({ status: 'ready' as const, writable: true, value, base: DEFAULT_SECTION, user }),
-    set: async (field: string, next: unknown): Promise<void> => {
+    mutations,
+    getSnapshot: () => ({
+      status: 'ready' as const,
+      writable: true,
+      value,
+      base: DEFAULT_SECTION,
+      user,
+      revision: 0,
+      mode: 'host' as const,
+    }),
+    set: async (field: string, next: unknown): Promise<boolean> => {
       writes.push({ field, value: next })
-      user = { ...user, [field]: next }
-      value = { ...value, [field]: next } as NordSection
-      notify()
+      stage({ ...value, [field]: next } as NordSection, { ...user, [field]: next })
+      return true
     },
-    unset: async (field: string): Promise<void> => {
-      unsets.push(field)
+    unset: async (field: string): Promise<boolean> => {
       const { [field]: _dropped, ...rest } = user
-      user = rest
-      notify()
+      stage(value, rest)
+      return true
     },
-    subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener) } },
+    mutate: async (ops: readonly SettingsPathOpView[]): Promise<boolean> => {
+      mutations.push([...ops])
+      for (const op of ops) {
+        const [field, leaf] = op.path
+        if (field === undefined) continue
+        const role = ROLES.find(candidate => candidate === field)
+        if (role === undefined) continue
+        if (op.op === 'unset') {
+          // Clearing a role drops the whole override, so the section falls back
+          // to the composition default.
+          const { [role]: _dropped, ...rest } = user
+          stage({ ...value, [role]: DEFAULT_SECTION[role] }, rest)
+        } else if (leaf === 'light' || leaf === 'dark') {
+          editPair(role, leaf, op.value)
+        }
+      }
+      return true
+    },
+    subscribe: (listener: () => void) => {
+      listeners.add(listener)
+      return () => { listeners.delete(listener) }
+    },
   }
 }
 
@@ -93,9 +147,6 @@ function wallpaperStub() {
     } satisfies WallpaperPort,
   }
 }
-
-const SCOPE = (stub: ReturnType<typeof scopeStub>): SettingsScope<NordSection> =>
-  stub as unknown as SettingsScope<NordSection>
 
 describe('the derived layer', () => {
   it('covers exactly the tokens the ui-theme sheet declares', () => {
@@ -149,48 +200,51 @@ describe('the wallpaper tokens', () => {
 
 describe('the tuner', () => {
   it('applies the stored palette on construction', () => {
-    const scope = scopeStub()
+    const scope = formStub()
     const theme = themeStub()
-    new NordThemeController(SCOPE(scope), theme, wallpaperStub().port)
+    new NordThemeController(scope, theme, wallpaperStub().port)
     expect(theme.layers).toHaveLength(1)
     expect(theme.layers[0]?.['--dsw-alias-bg-base']).toEqual(DEFAULT_PALETTE.background)
   })
 
   it('previews an edit before it is saved, and writes it only on save', async () => {
-    const scope = scopeStub()
+    const scope = formStub()
     const theme = themeStub()
-    const controller = new NordThemeController(SCOPE(scope), theme, wallpaperStub().port)
+    const controller = new NordThemeController(scope, theme, wallpaperStub().port)
     const face = controller.inject()
 
     face.edit('accent', 'light', '#101010')
     expect(theme.layers.at(-1)?.['--dsw-alias-brand-primary']?.light).toBe('#101010')
-    expect(scope.writes).toHaveLength(0)
+    expect(scope.mutations).toHaveLength(0)
     expect(face.hooks.nordTheme.getSnapshot().dirty).toBe(true)
 
     await controller.save()
-    expect(scope.writes).toHaveLength(1)
-    expect(scope.writes[0]?.field).toBe('accent')
-    expect(scope.getSnapshot().value.accent.light).toBe('#101010')
+    // One atomic mutation carries both scheme members of the nested role.
+    expect(scope.mutations).toEqual([[
+      { op: 'set', path: ['accent', 'light'], value: '#101010' },
+      { op: 'set', path: ['accent', 'dark'], value: DEFAULT_PALETTE.accent.dark },
+    ]])
+    expect(scope.getSnapshot().value?.accent.light).toBe('#101010')
     expect(face.hooks.nordTheme.getSnapshot().dirty).toBe(false)
   })
 
   it('restores a role by clearing its stored override', async () => {
-    const scope = scopeStub({ accent: { light: '#101010', dark: '#202020' } })
+    const scope = formStub({ accent: { light: '#101010', dark: '#202020' } })
     const theme = themeStub()
-    const controller = new NordThemeController(SCOPE(scope), theme, wallpaperStub().port)
+    const controller = new NordThemeController(scope, theme, wallpaperStub().port)
     const face = controller.inject()
 
     face.resetRole('accent')
     expect(theme.layers.at(-1)?.['--dsw-alias-brand-primary']).toEqual(DEFAULT_PALETTE.accent)
     await controller.save()
-    expect(scope.unsets).toContain('accent')
+    expect(scope.mutations).toEqual([[{ op: 'unset', path: ['accent'] }]])
     expect(scope.getSnapshot().user).not.toHaveProperty('accent')
   })
 
   it('drops drafts on discard without touching the stored value', () => {
-    const scope = scopeStub()
+    const scope = formStub()
     const theme = themeStub()
-    const controller = new NordThemeController(SCOPE(scope), theme, wallpaperStub().port)
+    const controller = new NordThemeController(scope, theme, wallpaperStub().port)
     const face = controller.inject()
 
     face.edit('text', 'dark', '#ABCDEF')
@@ -200,10 +254,10 @@ describe('the tuner', () => {
   })
 
   it('paints the stored image once the Host hands it over', async () => {
-    const scope = scopeStub({ wallpaper: 'stored-hash', wallpaperMediaType: 'image/webp' })
+    const scope = formStub({ wallpaper: 'stored-hash', wallpaperMediaType: 'image/webp' })
     const theme = themeStub()
     const wallpaper = wallpaperStub()
-    const controller = new NordThemeController(SCOPE(scope), theme, wallpaper.port)
+    const controller = new NordThemeController(scope, theme, wallpaper.port)
 
     await vi.waitFor(() => {
       expect(theme.layers.at(-1)?.['--dsh-nord-wallpaper']?.light).toBe('url("blob:stored-stored-hash")')
@@ -213,10 +267,10 @@ describe('the tuner', () => {
   })
 
   it('stores a picked image before staging it, and writes the reference on save', async () => {
-    const scope = scopeStub()
+    const scope = formStub()
     const theme = themeStub()
     const wallpaper = wallpaperStub()
-    const controller = new NordThemeController(SCOPE(scope), theme, wallpaper.port)
+    const controller = new NordThemeController(scope, theme, wallpaper.port)
     const face = controller.inject()
     const picked = wallpaper.file('holiday.png')
 
@@ -240,10 +294,10 @@ describe('the tuner', () => {
   })
 
   it('restores the stored image when a staged pick is discarded', async () => {
-    const scope = scopeStub({ wallpaper: 'stored-hash', wallpaperMediaType: 'image/png' })
+    const scope = formStub({ wallpaper: 'stored-hash', wallpaperMediaType: 'image/png' })
     const theme = themeStub()
     const wallpaper = wallpaperStub()
-    const controller = new NordThemeController(SCOPE(scope), theme, wallpaper.port)
+    const controller = new NordThemeController(scope, theme, wallpaper.port)
     const face = controller.inject()
     await vi.waitFor(() => { expect(face.hooks.nordTheme.getSnapshot().wallpaper).toBe(true) })
 
@@ -262,10 +316,10 @@ describe('the tuner', () => {
   })
 
   it('stages removal without reading the image back again', async () => {
-    const scope = scopeStub({ wallpaper: 'stored-hash', wallpaperMediaType: 'image/png' })
+    const scope = formStub({ wallpaper: 'stored-hash', wallpaperMediaType: 'image/png' })
     const theme = themeStub()
     const wallpaper = wallpaperStub()
-    const controller = new NordThemeController(SCOPE(scope), theme, wallpaper.port)
+    const controller = new NordThemeController(scope, theme, wallpaper.port)
     const face = controller.inject()
     await vi.waitFor(() => { expect(face.hooks.nordTheme.getSnapshot().wallpaper).toBe(true) })
 
@@ -282,9 +336,9 @@ describe('the tuner', () => {
   })
 
   it('previews a staged opacity and persists it on save', async () => {
-    const scope = scopeStub({ wallpaper: 'stored-hash', wallpaperMediaType: 'image/png' })
+    const scope = formStub({ wallpaper: 'stored-hash', wallpaperMediaType: 'image/png' })
     const theme = themeStub()
-    const controller = new NordThemeController(SCOPE(scope), theme, wallpaperStub().port)
+    const controller = new NordThemeController(scope, theme, wallpaperStub().port)
     const face = controller.inject()
     await vi.waitFor(() => { expect(face.hooks.nordTheme.getSnapshot().wallpaper).toBe(true) })
 
@@ -299,11 +353,11 @@ describe('the tuner', () => {
   })
 
   it('reports a failed store and leaves the painted background alone', async () => {
-    const scope = scopeStub({ wallpaper: 'stored-hash', wallpaperMediaType: 'image/png' })
+    const scope = formStub({ wallpaper: 'stored-hash', wallpaperMediaType: 'image/png' })
     const theme = themeStub()
     const wallpaper = wallpaperStub()
     wallpaper.port.store.mockRejectedValueOnce(new Error('too large'))
-    const controller = new NordThemeController(SCOPE(scope), theme, wallpaper.port)
+    const controller = new NordThemeController(scope, theme, wallpaper.port)
     const face = controller.inject()
     await vi.waitFor(() => { expect(face.hooks.nordTheme.getSnapshot().wallpaper).toBe(true) })
 
@@ -316,11 +370,11 @@ describe('the tuner', () => {
   })
 
   it('reports an unreadable stored image without retrying it on every write', async () => {
-    const scope = scopeStub({ wallpaper: 'gone', wallpaperMediaType: 'image/png' })
+    const scope = formStub({ wallpaper: 'gone', wallpaperMediaType: 'image/png' })
     const theme = themeStub()
     const wallpaper = wallpaperStub()
     wallpaper.port.read.mockRejectedValue(new Error('missing'))
-    const controller = new NordThemeController(SCOPE(scope), theme, wallpaper.port)
+    const controller = new NordThemeController(scope, theme, wallpaper.port)
     const face = controller.inject()
     await vi.waitFor(() => { expect(face.hooks.nordTheme.getSnapshot().wallpaperFailed).toBe(true) })
 
@@ -331,10 +385,10 @@ describe('the tuner', () => {
 
   it('releases the layer and the painted URL on dispose', () => {
     const releases = vi.fn()
-    const scope = scopeStub()
+    const scope = formStub()
     const wallpaper = wallpaperStub()
     const controller = new NordThemeController(
-      SCOPE(scope),
+      scope,
       { overrideTokens: () => releases },
       wallpaper.port,
     )

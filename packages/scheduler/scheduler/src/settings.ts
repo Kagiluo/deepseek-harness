@@ -1,43 +1,39 @@
 /**
- * The `scheduler` settings namespace: the user-authored task list the Web
- * settings page reads and writes.
+ * The `scheduler` settings entry: the task list the Web settings page
+ * reads and writes.
  *
- * The namespace is separate from the plugin's `Config` so a deployment can ship
- * a starting schedule while a user edits their own. Settings resolve schema
- * defaults, then the composition base (`Config`), then the stored user section,
- * so the user's list replaces the shipped one once it exists.
+ * The namespace is this plugin's Loader entry id, and the plugin's own
+ * `Config` is the settings form — `Config.tasks` is declared volatile, which is
+ * what makes the task list editable without remounting the plugin. Settings
+ * resolve schema defaults, then the composition base (`Config`), then the
+ * stored user section, so a user's saved list replaces the shipped one.
  *
- * The `permissionPreset` field is a union of the presets this deployment can
- * actually run unattended, because the settings schema is also what the
- * settings page renders: advertising the eligible names there is what lets the
- * page offer a correct choice without duplicating the approval policy client
- * side. This mirrors how the permission namespace advertises its own default.
+ * `unattendedPresets` selects the presets a scheduled run may use. Approval
+ * policy is enforced when a task is armed, not when it is stored, because the
+ * eligible set depends on the permission table mounted at that moment.
  * @module @deepseek-ai/dsh-scheduler/settings
  */
 
 import z from '@deepseek-ai/schemastery'
 import type { SchedulerTask } from './types.ts'
 
-/** Settings namespace owning the user-authored task list. */
+/** Loader entry id that owns the settings namespace, and the namespace itself. */
 export const SCHEDULER_SETTINGS_NAMESPACE = 'scheduler'
-
-/** Resolved value of the `scheduler` settings namespace. */
-export interface SchedulerSettings {
-  /** The authored tasks; an empty list means nothing is scheduled. */
-  tasks: SchedulerTask[]
-}
 
 /**
  * Build the schema for one task record's fields.
  *
- * Both layers that carry tasks — the plugin `Config` and the settings namespace
- * — describe the same `SchedulerTask`, so they share this builder rather than
- * restating the fields. The only field that differs is `permissionPreset`, which
- * the settings layer narrows to the presets a deployment can run unattended.
- * @param permissionPreset - schema for the preset field, chosen by the caller.
+ * `Config` is the only layer that carries tasks, so this builder has one
+ * description of `SchedulerTask` rather than one per layer. The accepted input
+ * is the writable field set a composition file or the settings wire carries —
+ * `SchedulerTask` with a plain weekday array — and the produced value is
+ * `SchedulerTask`.
+ * @param permissionPreset - schema for the preset field.
  * @returns the task record schema.
  */
-export function taskSchema(permissionPreset: z<string>): z<SchedulerTask> {
+export function taskSchema(
+  permissionPreset: z<string>,
+): z<Omit<SchedulerTask, 'weekdays'> & { weekdays?: number[] }, SchedulerTask> {
   return z.object({
     id: z.string().required(),
     enabled: z.boolean(),
@@ -50,27 +46,6 @@ export function taskSchema(permissionPreset: z<string>): z<SchedulerTask> {
     permissionPreset,
     title: z.string(),
   })
-}
-
-/**
- * Build the `scheduler` settings schema.
- *
- * The schema depends on the deployment's permission-preset table, so it is
- * built once at mount rather than declared as a constant. An empty `eligible`
- * list falls back to a plain string, which keeps the namespace registrable in a
- * deployment that mounts no permission service — the task validation refuses
- * such a task at arm time with a message naming the real problem.
- * @param eligible - preset names whose approval policy is `never`.
- * @returns the namespace schema.
- */
-export function schedulerSettingsSchema(eligible: readonly string[]): z<SchedulerSettings> {
-  // `.required()` even for the union: a union node carries no implicit
-  // requirement, so without it a stored task could omit the field this schema
-  // and `SchedulerTask` both declare non-optional.
-  const permissionPreset = eligible.length === 0
-    ? z.string().required()
-    : z.union(eligible.map(name => z.const(name))).required()
-  return z.object({ tasks: z.array(taskSchema(permissionPreset as z<string>)).default([]) })
 }
 
 /**

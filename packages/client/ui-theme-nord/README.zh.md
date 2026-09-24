@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-client-ui-theme-nord` 是桌面应用自己的外观：一套亮/暗配色加上一张背景图片，都在「设置 → 插件」的同一个标签页里编辑。十个色址——底色、三层表面、文字、两个品牌色，以及三个状态色——驱动 ui-theme 样式表声明的每一个 `--dsw-alias-*` 与 `--dsw-specific-*` token，因此调整一个色址会移动所有读取它的表面。浏览器半部把该派生结果叠加在 `ctx.theme` 上；Host 半部提供设置分节，并把选中的图片存到 Harness home 下。
+`dsh-client-ui-theme-nord` 是桌面应用自己的外观：一套亮/暗配色加上一张背景图片，都在「设置 → 插件」的同一个标签页里编辑。十个色址——底色、三层表面、文字、两个品牌色，以及三个状态色——驱动 ui-theme 样式表声明的每一个 `--dsw-alias-*` 与 `--dsw-specific-*` token，因此调整一个色址会移动所有读取它的表面。浏览器半部把该派生结果叠加在 `ctx.theme` 上；Host 半部声明调色面板的 `Config`，并把选中的图片存到 Harness home 下。
 
 ## 目录
 
@@ -37,7 +37,7 @@ kind: "package-reference"
       name: '@deepseek-ai/dsh-client-ui-theme-nord'
 ```
 
-组合可以通过该行的 `config` 提供这十个色址；未写入的设置文档解析到 schema 声明的 Nord 配色。CLI 或 Web 组合可以通过 profile bundle 或 `--patch` 覆盖文件挂载同一行。本包没有声明 `dsh.bundle`，因为它不是 profile bundle：该行直接指名它。
+调色面板的取值位于该行的条目 id `ui-theme-nord` 之下：设置服务以插件 Loader 条目所挂载的 id 提供其 `Config` 表单，浏览器半部通过 `ctx.configForms` 读取该表单。组合可以通过该行的 `config` 提供这十个色址；未写入的设置文档解析到 schema 声明的 Nord 配色。CLI 或 Web 组合可以通过 profile bundle 或 `--patch` 覆盖文件挂载同一行。本包没有声明 `dsh.bundle`，因为它不是 profile bundle：该行直接指名它。
 
 ### 背景图片
 
@@ -51,7 +51,7 @@ kind: "package-reference"
 <details>
 <summary>实现内部——点击展开</summary>
 
-配色是每个色彩方案十个色址，每项一个亮色值和一个暗色值。`buildTokens` 由它们派生出完整的别名 token 表；`ctx.theme.overrideTokens` 在 `ctx.effect` 中叠加结果，因此卸载插件会恢复内置配色。调色面板的控制器持有一份暂存草稿：每次修改都重建该层，而设置文档只在保存时写入。设置 scope 仍是权威——控制器从分节读回被接受的值，而不是自行预测。
+配色是每个色彩方案十个色址，每项一个亮色值和一个暗色值。`buildTokens` 由它们派生出完整的别名 token 表；`ctx.theme.overrideTokens` 在 `ctx.effect` 中叠加结果，因此卸载插件会恢复内置配色。调色面板的控制器持有一份暂存草稿：每次修改都重建该层，而设置文档只在保存时写入。设置表单仍是权威——控制器从表单读回被接受的值，而不是自行预测；角色修改以该角色 `light`/`dark` 叶节点的原子 mutation 写入，因为角色是嵌套对象而非顶层字段。
 
 背景图片以字节形式存放在 `$DSH_HOME/theme-wallpaper/{sha256}`，并有一个 `.type` 兄弟文件；设置文档只携带哈希与媒体类型，因此设置链路上从不传输图片字节。字节以 base64 跨越 Remote 边界，因为该边界只承载 JSON；存储把单张图片限制在 8 MiB，只接受浏览器可显示的媒体类型。背景由两层绘制：持有配色底色的不透明底板，以及其上方按暂存不透明度绘制的图片。底色表面 token 恰好让出该不透明度，这正是图片能透过外壳框架显示、而上层表面仍保持不透明 token 的原因。
 
@@ -73,7 +73,7 @@ kind: "package-reference"
 以下页面是本源插件所扩展各层的归属地。
 
 - [ui-theme](../ui-theme/README.zh.md) — 拥有 `--dsw-*` token 样式表，以及本源插件叠加覆盖层的主题注册表。
-- [ui-settings](../ui-settings/README.zh.md) — 拥有本插件调色面板绑定的设置 scope，以及它填充的插件标签页 slot。
+- [ui-settings](../ui-settings/README.zh.md) — 拥有本插件调色面板读取的 config forms 服务，以及它填充的插件标签页 slot。
 - [file-upload](../file-upload/README.zh.md) — 另一个把浏览器半部与 Host Remote 贡献配对的客户端包。
 - [Web styling](../../../docs/web-styling.zh.md) — 客户端样式表与 token 的权威规则。
 - [Desktop application](../../../apps/desktop/README.zh.md) — profile、运行时闭包与内置行的组合方式。
@@ -107,7 +107,7 @@ kind: "package-reference"
 <details>
 <summary>维护者工作上下文——点击展开</summary>
 
-Host 半部是类插件：它安装设置分节并提供 `themeWallpaper` Remote 命名空间，由 `packages/api/remotes` 为应用的客户端装配挂载。
+Host 半部是类插件：它声明调色面板的 `Config`（色址与背景图片字段全部 volatile，因此设置服务把它们暴露为可编辑字段），并因其标签页自带布局而退出自动表单；它还提供 `themeWallpaper` Remote 命名空间，由 `packages/api/remotes` 为应用的客户端装配挂载。
 
 </details>
 

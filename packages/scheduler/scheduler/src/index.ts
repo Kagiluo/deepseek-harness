@@ -2,10 +2,11 @@
  * Daily wall-clock scheduling: create and start one Session in a configured
  * workspace, following a preset prompt, at a fixed time of day.
  *
- * Tasks come from two layers, merged: the deployment's `cordis.yml` `config`
- * (the base layer, which a fresh profile or a headless run uses) and the
- * `scheduler` user-settings namespace, which the Web settings page writes.
- * Committing a change there re-arms every task without a restart.
+ * Tasks come from two layers of one `Config`: the deployment's `cordis.yml`
+ * entry (the composition base) and the `scheduler` user settings section,
+ * which the Web settings page writes. `Config.tasks` is volatile, so a
+ * committed change reaches the running plugin as a `loader/volatile-update`
+ * and re-arms every task without a restart.
  *
  * The plugin owns no durable schedule state of its own — the Sessions it
  * creates are the durable record — so a task that came due while the process
@@ -13,13 +14,15 @@
  * @module @deepseek-ai/dsh-scheduler
  */
 
-import type { Context } from '@deepseek-ai/cordis'
+import type { Context, Volatile } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 // Type-only: pulls the settings plugin's Context merge (ctx.settings) into this program.
 import type {} from '@deepseek-ai/dsh-settings'
+// Type-only: pulls the Loader's `loader/volatile-update` event into this program.
+import type {} from '@deepseek-ai/cordis-plugin-loader'
 import { resolveArmedTasks, validateTaskStructure } from './config.ts'
 import { TaskRuntime } from './runtime.ts'
-import { SCHEDULER_SETTINGS_NAMESPACE, schedulerSettingsSchema, taskSchema, unattendedPresets } from './settings.ts'
+import { taskSchema } from './settings.ts'
 import type { SchedulerTask } from './types.ts'
 
 export type * from './types.ts'
@@ -27,8 +30,7 @@ export { RUN_DEADLINE_MS } from './session.ts'
 export type { RunOutcome } from './session.ts'
 export { SchedulerConfigError, resolveArmedTasks, validateTaskStructure } from './config.ts'
 export type { ArmedTasks, SkippedTask } from './config.ts'
-export { SCHEDULER_SETTINGS_NAMESPACE, schedulerSettingsSchema, unattendedPresets } from './settings.ts'
-export type { SchedulerSettings } from './settings.ts'
+export { SCHEDULER_SETTINGS_NAMESPACE, unattendedPresets } from './settings.ts'
 export { SchedulerTimeError, nextOccurrence, resolveDailySchedule, resolveTimeZone } from './time.ts'
 export type { DailySchedule } from './time.ts'
 export { MAX_TIMER_DELAY_MS, TaskRuntime } from './runtime.ts'
@@ -41,8 +43,8 @@ export const name = 'scheduler'
  * `agentPresets` is deliberately absent: a deployment may configure no roster,
  * and the plugin reads that optional service through `ctx.get`. `settings` is
  * absent for the same reason: the Web profile mounts it, a bare profile may
- * not, and the plugin reads it through `ctx.get` so a deployment can schedule
- * from `Config` alone.
+ * not, and the plugin injects it only to opt out of the generated settings
+ * form, so a deployment can schedule from `Config` alone.
  */
 export const inject = [
   'agents',
@@ -53,35 +55,38 @@ export const inject = [
   'workspaceRegistry',
 ]
 
-/** Plugin configuration: the tasks the deployment ships, below any user layer. */
+/**
+ * Plugin configuration: the tasks the deployment ships, holding the live task
+ * list the settings page replaces.
+ */
 export interface Config {
   /**
-   * Daily tasks to run. This is the base layer: the Web settings page writes
-   * the user layer, which replaces it once a user saves a task list there.
+   * Daily tasks to run. Volatile, so the settings page edits the live list
+   * without remounting the plugin. This is the base layer: the `scheduler`
+   * user section replaces it once a user saves a list there.
    */
-  tasks: SchedulerTask[]
+  tasks: Volatile<SchedulerTask[]>
 }
 
-/** Runtime schema for the deployment's task layer. */
-export const Config: z<Config> = z.object({
-  tasks: z.array(taskSchema(z.string().required())).default([]),
+/** Runtime schema for the deployment's task layer and its settings form. */
+export const Config = z.object({
+  tasks: z.array(taskSchema(z.string().required())).default([]).volatile(),
 })
 
 /**
  * Validate the configured task structure, then arm one runtime per resolvable
- * task, re-arming whenever the stored task list changes.
+ * task, re-arming whenever the volatile task list changes.
  *
  * @param ctx - Plugin context carrying the session-creation services.
- * @param config - Validated deployment task config.
+ * @param config - Validated live task config.
  * @throws {SchedulerConfigError} when a configured task cannot denote a runnable occurrence.
  */
 export function apply(ctx: Context, config: Config): void {
-  validateTaskStructure(config.tasks)
+  validateTaskStructure(config.tasks.get())
   const lifetime = new AbortController()
   let runtimes: TaskRuntime[] = []
   let generation = 0
-  const entry = config.tasks
-  let source: () => readonly SchedulerTask[] = () => entry
+  const source = (): readonly SchedulerTask[] => config.tasks.get()
 
   /**
    * Resolve the current task list and swap the armed set to match.
@@ -91,9 +96,15 @@ export function apply(ctx: Context, config: Config): void {
    * then does the new set start. A generation counter makes a superseded
    * resolution — one whose `resolve` settled after a later change arrived —
    * discard its own result instead of resurrecting a stale schedule.
+   *
+   * The structure check runs again here because a stored list can be edited
+   * outside the settings page. A failure rejects this resolution, which
+   * `rearm` logs, leaving the previous arm set running rather than arming a
+   * task that could never denote an occurrence.
    */
   const reload = async (): Promise<void> => {
     const mine = ++generation
+    validateTaskStructure(source())
     const { armed, skipped } = await resolveArmedTasks(ctx, source())
     if (mine !== generation) return
     for (const task of skipped) ctx.logger.warn(`scheduler: task "${task.id}" is not armed: ${task.reason}`)
@@ -103,22 +114,19 @@ export function apply(ctx: Context, config: Config): void {
     for (const runtime of runtimes) runtime.start()
   }
   const rearm = (): void => {
-    /* v8 ignore next 3 -- unreachable while every `reload` step contains its own errors. */
     reload().catch((error: unknown) => {
       ctx.logger.warn(`scheduler: re-arm failed: ${error instanceof Error ? error.message : String(error)}`)
     })
   }
 
-  const eligible = unattendedPresets(ctx.permissionPresets.names, name => ctx.permissionPresets.resolve(name))
   ctx.effect(() => {
     rearm()
-    ctx.inject(['settings'], (settingsCtx) => {
-      settingsCtx.settings.installSection(ctx, SCHEDULER_SETTINGS_NAMESPACE, schedulerSettingsSchema(eligible), { tasks: entry }, {
-        validate: (value) => { validateTaskStructure(value.tasks) },
-        setSource: (current) => { source = () => current().tasks },
-        onChange: rearm,
-      })
-    })
+    // This plugin ships its own settings page, so the Loader entry exposes no
+    // generated form; `configure` owns that policy for this plugin instance.
+    ctx.inject(['settings'], (child) => { child.effect(() => child.settings.configure({ auto: false }, ctx.fiber)) })
+    // The settings write path commits a volatile-only change into the running
+    // config and announces it on this fiber; the task list is already live.
+    ctx.on('loader/volatile-update', () => { rearm() })
     return async () => {
       lifetime.abort(new Error('scheduler unloaded'))
       const pending = runtimes

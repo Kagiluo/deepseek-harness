@@ -10,7 +10,7 @@
 
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@deepseek-ai/dsh-client-locale/client'
-// Type-only: ctx.settingsScope and the settings SlotMap merge.
+// Type-only: ctx.configForms and the settings SlotMap merge.
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 // Type-only: the registry behind ctx.slots.
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
@@ -27,18 +27,11 @@ import { createWallpaperPort, type WallpaperNamespace } from './wallpaper.ts'
 /** Dictionary namespace owned by this plugin. */
 const NS = 'nordTheme'
 
-/**
- * Settings namespace the Host half registers. Spelled here rather than
- * imported: pulling the Host half in would inline its schema library into the
- * browser artifact.
- */
-const SETTINGS_NAMESPACE = 'theme-nord'
-
 /** Plugin name, matching the package the loader mounts. */
 export const name = '@deepseek-ai/dsh-client-ui-theme-nord'
 
 /** Required services (cordis fiber inject). */
-export const inject = ['theme', 'slots', 'locale', 'remote', 'settingsScope']
+export const inject = ['theme', 'slots', 'locale', 'remote', 'configForms']
 
 /**
  * Stack the palette layer, paint the wallpaper sheets, and contribute the tuner tab.
@@ -57,7 +50,10 @@ export function apply(ctx: ClientContext): void {
   }, 'ui-theme-nord: wallpaper stylesheet')
 
   const controller = new NordThemeController(
-    ctx.settingsScope.bind<NordSection>({ namespace: SETTINGS_NAMESPACE }),
+    // The settings namespace is the Loader entry id the Desktop composition
+    // mounts (`apps/desktop-host/config/desktop.cordis.patch.yml`), which is
+    // also the id the Host half's Config is served under.
+    ctx.configForms.get<NordSection>('ui-theme-nord'),
     ctx.theme,
     // Read through `ctx.get`, not `ctx.remote.themeWallpaper`: the assembly
     // installs the namespace under the `remote.<namespace>` service key, and a

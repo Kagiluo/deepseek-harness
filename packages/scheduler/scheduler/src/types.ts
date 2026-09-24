@@ -1,17 +1,19 @@
 /**
  * Scheduler vocabulary: one task declared by the deployment or authored in the
- * Web settings page, plus the durable provenance its Session records.
+ * Web settings page, plus the durable record its Session keeps of the task and
+ * occurrence that produced it.
  * @module @deepseek-ai/dsh-scheduler/types
  */
 
 import type { DailySchedule } from './time.ts'
 
 /**
- * One daily wall-clock task. Structure is validated wherever the task is
- * authored; the references it names are resolved when it is armed.
+ * One daily wall-clock task. Its structure — id, time, zone, and weekdays — is
+ * validated when the plugin loads and on every re-arm; the references it names
+ * are resolved when it is armed.
  */
 export interface SchedulerTask {
-  /** Stable task id naming this task in diagnostics, its Session title, and message provenance. */
+  /** Stable task id naming this task in diagnostics, its Session title, and the scheduler metadata on the messages it admits. */
   readonly id: string
   /**
    * Whether this task is armed. Omission means enabled; `false` pauses the task
@@ -29,7 +31,7 @@ export interface SchedulerTask {
    * Weekdays this task runs on, `0` (Sunday) through `6` (Saturday). Omission
    * runs it every day. An empty list is refused, because it never runs.
    */
-  readonly weekdays?: number[]
+  readonly weekdays?: readonly number[]
   /** Prompt text admitted as the created Session's first turn. */
   readonly prompt: string
   /**

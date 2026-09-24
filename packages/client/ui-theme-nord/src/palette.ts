@@ -87,6 +87,9 @@ export function buildTokens(palette: Palette): Record<string, ColorRole> {
   return {
     // Ground and surfaces.
     '--dsw-alias-bg-base': self(background),
+    // The document preview stays a polar-night backdrop in both schemes, one
+    // step deeper in the dark one, because the surface is dark either way.
+    '--dsw-alias-bg-document-preview': { light: surfaceDeep.dark, dark: background.dark },
     '--dsw-alias-bg-layer-1': self(surface),
     '--dsw-alias-bg-layer-2': { light: surface.light, dark: surfaceRaised.dark },
     '--dsw-alias-bg-layer-3': { light: surface.light, dark: surfaceDeep.dark },
@@ -140,6 +143,7 @@ export function buildTokens(palette: Palette): Record<string, ColorRole> {
     // Text ramp.
     '--dsw-alias-label-caption': onText(0.45),
     '--dsw-alias-label-dimmed': onText(0.28),
+    '--dsw-alias-label-document-preview': { light: background.light, dark: text.dark },
     '--dsw-alias-label-primary': self(text),
     '--dsw-alias-label-primary-bluish': self(accent),
     '--dsw-alias-label-primary-dimmed': { light: shade(text.light, 0.88), dark: shade(text.dark, 0.85) },
@@ -159,6 +163,19 @@ export function buildTokens(palette: Palette): Record<string, ColorRole> {
     '--dsw-alias-markdown-placeholder': self(surfaceDeep),
     '--dsw-alias-markdown-tag': self(surfaceRaised),
 
+    // Diff surfaces: tints of the success and danger roles, never the roles
+    // themselves, so a diff line stays legible under the scheme's own text. The
+    // line background is the stronger tint, the gutter the weaker one, and both
+    // carry more alpha in the dark scheme where a tint reads fainter.
+    '--dsw-alias-code-diff-added': { light: shade(success.light, 0.08), dark: shade(success.dark, 0.12) },
+    '--dsw-alias-code-diff-deleted': { light: shade(danger.light, 0.08), dark: shade(danger.dark, 0.12) },
+    '--dsw-alias-file-diff-added-bg': { light: shade(success.light, 0.12), dark: shade(success.dark, 0.16) },
+    '--dsw-alias-file-diff-added-gutter': { light: shade(success.light, 0.08), dark: shade(success.dark, 0.12) },
+    '--dsw-alias-file-diff-added-marker': self(success),
+    '--dsw-alias-file-diff-deleted-bg': { light: shade(danger.light, 0.12), dark: shade(danger.dark, 0.16) },
+    '--dsw-alias-file-diff-deleted-gutter': { light: shade(danger.light, 0.08), dark: shade(danger.dark, 0.12) },
+    '--dsw-alias-file-diff-deleted-marker': self(danger),
+
     // Scrollbars.
     '--dsw-alias-scrollbar-bg-l1': onText(0.14),
     '--dsw-alias-scrollbar-bg-l2': onText(0.14),
@@ -170,6 +187,9 @@ export function buildTokens(palette: Palette): Record<string, ColorRole> {
     '--dsw-alias-state-business-tertiary': tone(accent, 0.16),
     '--dsw-alias-state-error-primary': self(danger),
     '--dsw-alias-state-error-secondary': onState(danger),
+    // The deep surface tone, which is what the neutral ramp the alias sheet
+    // resolves for this token lands on in each scheme.
+    '--dsw-alias-state-idle-primary': self(surfaceDeep),
     '--dsw-alias-state-success-primary': self(success),
     '--dsw-alias-state-success-secondary': onState(success),
     '--dsw-alias-state-success-tertiary': tone(success, 0.18),

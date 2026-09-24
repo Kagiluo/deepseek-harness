@@ -582,6 +582,54 @@ Depends on: `Volatile` (`@deepseek-ai/cordis`)
 
 Source: [`packages/client/ui-theme/src/index.ts:22`](../packages/client/ui-theme/src/index.ts)
 
+<a id="deepseek-aidsh-client-ui-theme-nord"></a>
+
+## `@deepseek-ai/dsh-client-ui-theme-nord`
+
+```ts config-catalog
+/** The Config the Loader parses; every user-editable field is a live reference. */
+export interface Config {
+  /** Base background role. */
+  background: Volatile<ColorRole>
+  /** Default card surface role. */
+  surface: Volatile<ColorRole>
+  /** Raised surface role. */
+  surfaceRaised: Volatile<ColorRole>
+  /** Deep surface role. */
+  surfaceDeep: Volatile<ColorRole>
+  /** Primary text role. */
+  text: Volatile<ColorRole>
+  /** Primary brand accent role. */
+  accent: Volatile<ColorRole>
+  /** Hover brand accent role. */
+  accentAlt: Volatile<ColorRole>
+  /** Error state role. */
+  danger: Volatile<ColorRole>
+  /** Success state role. */
+  success: Volatile<ColorRole>
+  /** Warning state role. */
+  warning: Volatile<ColorRole>
+  /** Content hash of the stored background image; empty when none is set. */
+  wallpaper: Volatile<string>
+  /** Media type recorded for {@link Config.wallpaper}, for the URL the tab builds. */
+  wallpaperMediaType: Volatile<string>
+  /** Background-image opacity, as a percentage. */
+  wallpaperOpacity: Volatile<number>
+}
+
+/** One role's value in each color scheme. */
+export interface ColorRole {
+  /** Value applied while the light palette is active. */
+  readonly light: string
+  /** Value applied while the dark palette is active. */
+  readonly dark: string
+}
+```
+
+Depends on: `Volatile` (`@deepseek-ai/cordis`)
+
+Source: [`packages/client/ui-theme-nord/src/index.ts:52`](../packages/client/ui-theme-nord/src/index.ts)
+
 <a id="deepseek-aidsh-compaction-basic"></a>
 
 ## `@deepseek-ai/dsh-compaction-basic`
@@ -2400,6 +2448,74 @@ Depends on: [`SandboxMode`](subsystems/sandbox.md)
 
 Source: [`packages/sandbox/sandbox-policy/src/index.ts:71`](../packages/sandbox/sandbox-policy/src/index.ts)
 
+<a id="deepseek-aidsh-scheduler"></a>
+
+## `@deepseek-ai/dsh-scheduler`
+
+Requires: `agents` · `agentDefaultModel` · `permissionPresets` · `sessions` · `sessionTitle` · `workspaceRegistry`
+
+```ts config-catalog
+/**
+ * Plugin configuration: the tasks the deployment ships, holding the live task
+ * list the settings page replaces.
+ */
+export interface Config {
+  /**
+   * Daily tasks to run. Volatile, so the settings page edits the live list
+   * without remounting the plugin. This is the base layer: the `scheduler`
+   * user section replaces it once a user saves a list there.
+   */
+  tasks: Volatile<SchedulerTask[]>
+}
+
+/**
+ * One daily wall-clock task. Its structure — id, time, zone, and weekdays — is
+ * validated when the plugin loads and on every re-arm; the references it names
+ * are resolved when it is armed.
+ */
+export interface SchedulerTask {
+  /** Stable task id naming this task in diagnostics, its Session title, and the scheduler metadata on the messages it admits. */
+  readonly id: string
+  /**
+   * Whether this task is armed. Omission means enabled; `false` pauses the task
+   * without deleting it, and a paused task's unusable references are not
+   * reported, because pausing is the author's decision rather than a problem.
+   */
+  readonly enabled?: boolean
+  /** Absolute path of an existing directory the created Session runs in. */
+  readonly workspacePath: string
+  /** Local wall-clock time of day, `HH:MM:SS` in 24-hour form. */
+  readonly time: string
+  /** IANA zone `time` is interpreted in; omission uses the process zone. */
+  readonly timeZone?: string
+  /**
+   * Weekdays this task runs on, `0` (Sunday) through `6` (Saturday). Omission
+   * runs it every day. An empty list is refused, because it never runs.
+   */
+  readonly weekdays?: readonly number[]
+  /** Prompt text admitted as the created Session's first turn. */
+  readonly prompt: string
+  /**
+   * Agent preset id the created Session joins. Omission joins the roster
+   * default when the deployment configures a roster; declaring one where no
+   * roster is configured is refused at load.
+   */
+  readonly agentPreset?: string
+  /**
+   * Permission preset applied to the created Session before its prompt. The
+   * preset's approval policy must be `never`: no person is present to answer a
+   * request, so a preset that asks would park the run indefinitely.
+   */
+  readonly permissionPreset: string
+  /** Session title applied before the prompt; omission uses this task's `id`. */
+  readonly title?: string
+}
+```
+
+Depends on: `Volatile` (`@deepseek-ai/cordis`)
+
+Source: [`packages/scheduler/scheduler/src/index.ts:62`](../packages/scheduler/scheduler/src/index.ts)
+
 <a id="deepseek-aidsh-sdk-app"></a>
 
 ## `@deepseek-ai/dsh-sdk-app`
@@ -4145,6 +4261,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 - `@deepseek-ai/dsh-client-ui-reference` ([`packages/client/ui-reference/src/index.ts`](../packages/client/ui-reference/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-renderer` ([`packages/client/ui-renderer/src/index.ts`](../packages/client/ui-renderer/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-schedule` ([`packages/client/ui-schedule/src/index.ts`](../packages/client/ui-schedule/src/index.ts))
+- `@deepseek-ai/dsh-client-ui-scheduler` ([`packages/client/ui-scheduler/src/index.ts`](../packages/client/ui-scheduler/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-session` ([`packages/client/ui-session/src/index.ts`](../packages/client/ui-session/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-settings` ([`packages/client/ui-settings/src/index.ts`](../packages/client/ui-settings/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-settings-agent-loop` ([`packages/client/ui-settings-agent-loop/src/index.ts`](../packages/client/ui-settings-agent-loop/src/index.ts))

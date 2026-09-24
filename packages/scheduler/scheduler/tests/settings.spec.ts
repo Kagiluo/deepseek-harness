@@ -1,12 +1,14 @@
-/** The `scheduler` settings namespace schema and unattended-preset selection. */
+/**
+ * The `scheduler` settings entry: its namespace id, the task record schema the
+ * plugin `Config` is built from, and unattended-preset selection.
+ */
 
 import { describe, expect, it } from 'vitest'
-import {
-  SCHEDULER_SETTINGS_NAMESPACE, schedulerSettingsSchema, unattendedPresets,
-  type SchedulerSettings,
-} from '../src/settings.ts'
+import z from '@deepseek-ai/schemastery'
+import { SCHEDULER_SETTINGS_NAMESPACE, taskSchema, unattendedPresets } from '../src/settings.ts'
+import type { SchedulerTask } from '../src/types.ts'
 
-/** A task record the settings schema admits. */
+/** A task record the task schema admits. */
 const TASK = {
   id: 'daily',
   workspacePath: '/tmp/workspace',
@@ -15,71 +17,52 @@ const TASK = {
   permissionPreset: 'unattended',
 }
 
-describe('SCHEDULER_SETTINGS_NAMESPACE', () => {
-  it('is the lowercase hyphenated namespace the settings provider accepts', () => {
-    expect(SCHEDULER_SETTINGS_NAMESPACE).toBe('scheduler')
-  })
-})
-
 /**
- * Parse one untrusted section through a namespace schema.
+ * Parse one untrusted task through the task record schema.
  *
  * A schema's call signature takes the resolved value; every real caller feeds
  * it raw configuration or settings-document data, so this names that boundary
  * instead of asserting the input into shape.
- * @param schema - the built namespace schema.
- * @param input - unvalidated section data.
- * @returns the resolved section.
+ * @param input - unvalidated task data.
+ * @returns the resolved task record.
  */
-function parse(schema: ReturnType<typeof schedulerSettingsSchema>, input: unknown): SchedulerSettings {
-  return (schema as unknown as (data: unknown) => SchedulerSettings)(input)
+function parse(input: unknown): SchedulerTask {
+  return (taskSchema(z.string().required()) as unknown as (data: unknown) => SchedulerTask)(input)
 }
 
-describe('schedulerSettingsSchema', () => {
-  it('defaults to an empty task list', () => {
-    expect(parse(schedulerSettingsSchema(['unattended']), {})).toEqual({ tasks: [] })
+describe('SCHEDULER_SETTINGS_NAMESPACE', () => {
+  it('is the Loader entry id owning the settings section', () => {
+    expect(SCHEDULER_SETTINGS_NAMESPACE).toBe('scheduler')
   })
+})
 
+describe('taskSchema', () => {
   it('fills the every-day default onto a stored task', () => {
-    const resolved = parse(schedulerSettingsSchema(['unattended']), { tasks: [TASK] })
-    expect(resolved.tasks[0]?.weekdays).toEqual([0, 1, 2, 3, 4, 5, 6])
+    expect(parse(TASK).weekdays).toEqual([0, 1, 2, 3, 4, 5, 6])
   })
 
-  it('accepts each advertised unattended preset', () => {
-    const schema = schedulerSettingsSchema(['unattended', 'full-access'])
-    expect(parse(schema, { tasks: [{ ...TASK, permissionPreset: 'full-access' }] }).tasks[0]?.permissionPreset)
-      .toBe('full-access')
-  })
-
-  it('refuses a preset this deployment does not advertise as unattended', () => {
-    const schema = schedulerSettingsSchema(['unattended'])
-    expect(() => parse(schema, { tasks: [{ ...TASK, permissionPreset: 'ask-each-time' }] })).toThrow()
-  })
-
-  it('falls back to a plain string when no preset is eligible', () => {
-    // A deployment mounting no permission service still registers the namespace;
-    // arm-time validation is what names the real problem.
-    const schema = schedulerSettingsSchema([])
-    expect(parse(schema, { tasks: [{ ...TASK, permissionPreset: 'anything' }] }).tasks[0]?.permissionPreset)
-      .toBe('anything')
+  it('admits any preset name, leaving the approval policy to arm time', () => {
+    // The eligible set depends on the permission table mounted at that moment,
+    // so the stored record keeps a plain name and `resolveTask` refuses a
+    // preset that asks when the task is armed.
+    expect(parse({ ...TASK, permissionPreset: 'ask-each-time' }).permissionPreset).toBe('ask-each-time')
   })
 
   it('requires the id, workspace, time, prompt, and permission preset', () => {
-    const schema = schedulerSettingsSchema(['unattended'])
     const required = ['id', 'workspacePath', 'time', 'prompt', 'permissionPreset'] as const
     for (const field of required) {
       const without = Object.fromEntries(
         Object.entries(TASK).filter(([key]) => key !== field),
       )
-      expect(() => parse(schema, { tasks: [without] }), field).toThrow()
+      expect(() => parse(without), field).toThrow()
     }
   })
 
   it('keeps an omitted optional field omitted rather than storing a null', () => {
-    const resolved = parse(schedulerSettingsSchema(['unattended']), { tasks: [TASK] })
-    expect(resolved.tasks[0]).not.toHaveProperty('timeZone')
-    expect(resolved.tasks[0]).not.toHaveProperty('agentPreset')
-    expect(resolved.tasks[0]).not.toHaveProperty('title')
+    const resolved = parse(TASK)
+    expect(resolved).not.toHaveProperty('timeZone')
+    expect(resolved).not.toHaveProperty('agentPreset')
+    expect(resolved).not.toHaveProperty('title')
   })
 })
 

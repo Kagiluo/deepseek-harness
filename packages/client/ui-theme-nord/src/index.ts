@@ -1,10 +1,11 @@
 /**
  * Host half of the Nord theme plugin.
  *
- * Two jobs: serve the palette settings section the browser half reads and
- * writes, and store the background image its tab uploads. The image lives as a
- * content-addressed file under the Harness home and the settings document
- * carries only its hash, so the settings wire never moves image bytes.
+ * Two jobs: declare the live Config whose fields the browser half edits through
+ * `configForms` under this Loader entry's id, and store the background image
+ * its tab uploads. The image lives as a content-addressed file under the
+ * Harness home and the settings document carries only its hash, so the settings
+ * wire never moves image bytes.
  *
  * A Remote boundary carries JSON only, so the image arrives and leaves
  * base64-encoded.
@@ -13,14 +14,14 @@
 import { createHash } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { Context } from '@deepseek-ai/cordis'
+import type { Context, Volatile } from '@deepseek-ai/cordis'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 // Type-only: brings the `settings` service declaration (ctx.settings).
 import type {} from '@deepseek-ai/dsh-settings'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import z from '@deepseek-ai/schemastery'
-import { DEFAULT_PALETTE } from './palette.ts'
-import { DEFAULT_WALLPAPER_OPACITY, type NordSection } from './section.ts'
+import { DEFAULT_PALETTE, type ColorRole } from './palette.ts'
+import { DEFAULT_WALLPAPER_OPACITY } from './section.ts'
 import type { StoredWallpaper, WallpaperId, WallpaperUpload } from './types.ts'
 
 /** Cap on one stored image, so an upload cannot be turned into a disk-filling write. */
@@ -32,23 +33,53 @@ const WALLPAPER_DIRECTORY = 'theme-wallpaper'
 /** Media types the store accepts. */
 const MEDIA_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/avif'])
 
-/** Settings namespace this plugin owns; the browser half binds the same name. */
-const NORD_SETTINGS_NAMESPACE = 'theme-nord'
-
 /**
  * One palette role's schema, defaulting to the North value.
+ *
+ * The role object is volatile as a whole, which makes both `light` and `dark`
+ * editable through the plugin's settings form without remounting.
  * @param role - the default value in each scheme.
  * @returns the role's settings schema.
  */
-function roleSchema(role: { readonly light: string; readonly dark: string }) {
+function roleSchema(role: ColorRole) {
   return z.object({
     light: z.string().default(role.light),
     dark: z.string().default(role.dark),
-  })
+  }).volatile()
+}
+
+/** The Config the Loader parses; every user-editable field is a live reference. */
+export interface Config {
+  /** Base background role. */
+  background: Volatile<ColorRole>
+  /** Default card surface role. */
+  surface: Volatile<ColorRole>
+  /** Raised surface role. */
+  surfaceRaised: Volatile<ColorRole>
+  /** Deep surface role. */
+  surfaceDeep: Volatile<ColorRole>
+  /** Primary text role. */
+  text: Volatile<ColorRole>
+  /** Primary brand accent role. */
+  accent: Volatile<ColorRole>
+  /** Hover brand accent role. */
+  accentAlt: Volatile<ColorRole>
+  /** Error state role. */
+  danger: Volatile<ColorRole>
+  /** Success state role. */
+  success: Volatile<ColorRole>
+  /** Warning state role. */
+  warning: Volatile<ColorRole>
+  /** Content hash of the stored background image; empty when none is set. */
+  wallpaper: Volatile<string>
+  /** Media type recorded for {@link Config.wallpaper}, for the URL the tab builds. */
+  wallpaperMediaType: Volatile<string>
+  /** Background-image opacity, as a percentage. */
+  wallpaperOpacity: Volatile<number>
 }
 
 /** The settings schema, whose defaults come from the palette defaults. */
-export const Config: z<NordSection> = z.object({
+export const Config = z.object({
   background: roleSchema(DEFAULT_PALETTE.background),
   surface: roleSchema(DEFAULT_PALETTE.surface),
   surfaceRaised: roleSchema(DEFAULT_PALETTE.surfaceRaised),
@@ -59,21 +90,19 @@ export const Config: z<NordSection> = z.object({
   danger: roleSchema(DEFAULT_PALETTE.danger),
   success: roleSchema(DEFAULT_PALETTE.success),
   warning: roleSchema(DEFAULT_PALETTE.warning),
-  wallpaper: z.string().default(''),
-  wallpaperMediaType: z.string().default(''),
-  wallpaperOpacity: z.number().min(0).max(100).default(DEFAULT_WALLPAPER_OPACITY),
+  wallpaper: z.string().default('').volatile(),
+  wallpaperMediaType: z.string().default('').volatile(),
+  wallpaperOpacity: z.number().min(0).max(100).default(DEFAULT_WALLPAPER_OPACITY).volatile(),
 })
 
 /**
- * Host half: the palette settings section plus the background-image store.
+ * Host half: the live palette Config plus the background-image store.
  *
  * Storing by content hash makes re-picking the same image a no-op and keeps the
- * settings document free of image bytes.
+ * settings document free of image bytes. The tuner is this plugin's own page,
+ * so the plugin opts out of the settings service's auto-generated form.
  */
 export default class ThemeWallpaperGateway extends TypertRemoteService {
-  /** The settings registry is where this plugin's section is installed. */
-  static inject = ['settings']
-
   /** Cordis reads the plugin's schema from this static. */
   static Config = Config
 
@@ -81,17 +110,13 @@ export default class ThemeWallpaperGateway extends TypertRemoteService {
 
   /**
    * @param ctx - the host plugin context.
-   * @param config - the composed defaults from the profile row.
+   * @param _config - the Loader's parsed Config; the browser half owns every value, so this half reads no field.
    */
-  constructor(ctx: Context, config: NordSection) {
+  constructor(ctx: Context, _config: Config) {
     super(ctx, 'themeWallpaper')
     this.directory = join(resolveDshHome(), WALLPAPER_DIRECTORY)
-    this.ctx.settings.installSection(this.ctx, NORD_SETTINGS_NAMESPACE, Config, config, {
-      // The browser half projects the section through ctx.settingsScope, so
-      // this half holds no resolved value and a committed change needs no
-      // re-registration here.
-      setSource: () => {},
-      onChange: () => {},
+    ctx.inject(['settings'], (child) => {
+      child.effect(() => child.settings.configure({ auto: false }, ctx.fiber))
     })
   }
 

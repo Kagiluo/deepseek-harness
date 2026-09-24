@@ -51,7 +51,9 @@ function context(options: {
   } as never)
   if (options.withRoster === true) {
     ctx.provide('agentPresets', {
-      roots: Array.from({ length: options.rosterRoots ?? 1 }, () => ({})),
+      // The registry advertises its roster through `list()`; its length is what
+      // decides whether a task must name a preset.
+      list: async () => Array.from({ length: options.rosterRoots ?? 1 }, (_unused, index) => ({ id: `preset-${String(index)}` })),
       resolve: async (id?: string) => ({ id: id ?? 'standard' }),
     } as never)
   }

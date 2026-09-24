@@ -1,14 +1,14 @@
 /**
- * The page controller: mirroring the settings scope, fencing one atomic write,
- * and keeping a refused save editable.
+ * The page controller: mirroring the `scheduler` configuration form, fencing one
+ * atomic write, and keeping a refused save editable.
  */
 
 import { describe, expect, it, vi } from 'vitest'
 import type { SchedulerTask } from '@deepseek-ai/dsh-scheduler'
-import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-ui-settings/client'
+import type { ConfigForm, ConfigFormSnapshot } from '@deepseek-ai/dsh-client-ui-settings/client'
 import { SchedulerTasksController, type SchedulerCatalogues } from '../src/client/controller.ts'
 
-/** The section the page reads and writes. */
+/** The `scheduler` entry's section. */
 interface Section { tasks: SchedulerTask[] }
 
 /** One stored task. */
@@ -23,15 +23,15 @@ function task(overrides: Partial<SchedulerTask> = {}): SchedulerTask {
   }
 }
 
-/** A settings scope whose accepted document the test controls. */
-class FakeScope implements SettingsScope<Section> {
-  snapshot: SettingsScopeSnapshot<Section>
+/** A configuration form whose accepted document the test controls. */
+class FakeForm implements ConfigForm<Section> {
+  snapshot: ConfigFormSnapshot<Section>
   readonly listeners = new Set<() => void>()
   readonly mutations: { ops: readonly unknown[]; revision: number | undefined }[] = []
   /** When set, the accepted document becomes this instead of what was submitted. */
   refuseWith: Section | undefined
 
-  constructor(initial: Partial<SettingsScopeSnapshot<Section>> = {}) {
+  constructor(initial: Partial<ConfigFormSnapshot<Section>> = {}) {
     this.snapshot = {
       status: 'ready',
       value: { tasks: [task()] },
@@ -44,26 +44,27 @@ class FakeScope implements SettingsScope<Section> {
     }
   }
 
-  getSnapshot(): SettingsScopeSnapshot<Section> { return this.snapshot }
+  getSnapshot(): ConfigFormSnapshot<Section> { return this.snapshot }
 
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener)
     return () => { this.listeners.delete(listener) }
   }
 
-  async mutate(ops: readonly unknown[], expectedRevision?: number): Promise<void> {
+  async mutate(ops: readonly unknown[], expectedRevision?: number): Promise<boolean> {
     this.mutations.push({ ops, revision: expectedRevision })
-    // The real wire replaces the addressed field's value, so the accepted
+    // The settings wire replaces the addressed field's value, so the accepted
     // section is the submitted array wrapped back under `tasks`.
     const submitted: Section = { tasks: (ops[0] as { value: SchedulerTask[] }).value }
     this.accept(this.refuseWith ?? submitted, (expectedRevision ?? 0) + 1)
+    return true
   }
 
-  async set(): Promise<void> { /* the page submits whole-list mutations */ }
+  async set(): Promise<boolean> { return false /* the page submits whole-list mutations */ }
 
-  async unset(): Promise<void> { /* the page submits whole-list mutations */ }
+  async unset(): Promise<boolean> { return false /* the page submits whole-list mutations */ }
 
-  /** Publish a newly accepted document the way the real scope does. */
+  /** Publish a newly accepted document the way the real form does. */
   accept(value: Section, revision: number): void {
     this.snapshot = { ...this.snapshot, value, revision, status: 'ready' }
     for (const listener of this.listeners) listener()
@@ -74,12 +75,12 @@ class FakeScope implements SettingsScope<Section> {
 const CATALOGUES: SchedulerCatalogues = {
   workspaces: () => [{ path: '/tmp/workspace', name: 'workspace' }],
   presets: async () => [{ id: 'standard', name: 'Standard' }],
-  permissionPresets: () => [{ id: 'unattended', name: 'unattended' }],
+  permissionPresets: async () => [{ id: 'unattended', name: 'unattended' }],
 }
 
 describe('SchedulerTasksController projection', () => {
   it('publishes the accepted section as the draft', () => {
-    const scope = new FakeScope()
+    const scope = new FakeForm()
     const controller = new SchedulerTasksController(scope, CATALOGUES)
     controller.start()
     const state = controller.source.getSnapshot()
@@ -90,41 +91,42 @@ describe('SchedulerTasksController projection', () => {
   })
 
   it('reports an unserved namespace as unavailable', () => {
-    const scope = new FakeScope({ status: 'unavailable', value: undefined })
+    const scope = new FakeForm({ status: 'unavailable', value: undefined })
     const controller = new SchedulerTasksController(scope, CATALOGUES)
     controller.start()
     expect(controller.source.getSnapshot().status).toBe('unavailable')
   })
 
-  it('keeps loading while the scope has no answer yet', () => {
-    const scope = new FakeScope({ status: 'loading', value: undefined })
+  it('keeps loading while the form has no answer yet', () => {
+    const scope = new FakeForm({ status: 'loading', value: undefined })
     const controller = new SchedulerTasksController(scope, CATALOGUES)
     controller.start()
     expect(controller.source.getSnapshot().status).toBe('loading')
   })
 
   it('treats an absent revision as zero, so a save still carries a fence', async () => {
-    const scope = new FakeScope({ revision: undefined })
+    const scope = new FakeForm({ revision: undefined })
     const controller = new SchedulerTasksController(scope, CATALOGUES)
     controller.start()
     expect(controller.source.getSnapshot().revision).toBe(0)
   })
 
-  it('falls back to the draft revision when the scope never reports one', async () => {
-    const scope = new FakeScope()
+  it('falls back to the draft revision when the form never reports one', async () => {
+    const scope = new FakeForm()
     const controller = new SchedulerTasksController(scope, CATALOGUES)
     controller.start()
     controller.patch(0, { prompt: 'edited' })
     // The accepted read reports no revision, so the draft's own fence stands.
     vi.spyOn(scope, 'mutate').mockImplementationOnce(async () => {
       scope.snapshot = { ...scope.snapshot, value: { tasks: [task({ prompt: 'edited' })] }, revision: undefined }
+      return true
     })
     await controller.save()
     expect(controller.source.getSnapshot().dirty).toBe(false)
   })
 
-  it('refreshes when the scope publishes a new document', () => {
-    const scope = new FakeScope()
+  it('refreshes when the form publishes a new document', () => {
+    const scope = new FakeForm()
     const controller = new SchedulerTasksController(scope, CATALOGUES)
     controller.start()
     scope.accept({ tasks: [task({ id: 'second' })] }, 2)
@@ -133,7 +135,7 @@ describe('SchedulerTasksController projection', () => {
   })
 
   it('never overwrites an in-progress edit with a background refresh', () => {
-    const scope = new FakeScope()
+    const scope = new FakeForm()
     const controller = new SchedulerTasksController(scope, CATALOGUES)
     controller.start()
     controller.patch(0, { prompt: 'my edit' })
@@ -146,7 +148,7 @@ describe('SchedulerTasksController projection', () => {
   })
 
   it('stops mirroring once the returned disposer runs', () => {
-    const scope = new FakeScope()
+    const scope = new FakeForm()
     const controller = new SchedulerTasksController(scope, CATALOGUES)
     const stop = controller.start()
     stop()
@@ -157,7 +159,7 @@ describe('SchedulerTasksController projection', () => {
 
 describe('SchedulerTasksController edits', () => {
   it('adds, removes, patches, and discards through the draft', () => {
-    const scope = new FakeScope()
+    const scope = new FakeForm()
     const controller = new SchedulerTasksController(scope, CATALOGUES)
     controller.start()
     controller.add()
@@ -171,24 +173,26 @@ describe('SchedulerTasksController edits', () => {
     expect(controller.source.getSnapshot().dirty).toBe(false)
   })
 
-  it('publishes the picker catalogs and survives a refused roster read', async () => {
-    const scope = new FakeScope()
+  it('publishes the picker catalogs and survives a refused read', async () => {
+    const scope = new FakeForm()
     const controller = new SchedulerTasksController(scope, {
       ...CATALOGUES,
       presets: async () => { throw new Error('roster unavailable') },
+      permissionPresets: async () => { throw new Error('catalog unavailable') },
     })
     await controller.refreshCatalogues()
     const state = controller.source.getSnapshot()
     expect(state.workspaces).toEqual([{ path: '/tmp/workspace', name: 'workspace' }])
-    expect(state.permissionPresets).toEqual([{ id: 'unattended', name: 'unattended' }])
-    // An optional agent preset simply leaves the picker without options.
+    // An optional agent preset and an unavailable permission catalog simply
+    // leave their pickers without options.
     expect(state.presets).toEqual([])
+    expect(state.permissionPresets).toEqual([])
   })
 })
 
 describe('SchedulerTasksController.save', () => {
   it('submits the whole list as one mutation fenced by the draft revision', async () => {
-    const scope = new FakeScope()
+    const scope = new FakeForm()
     const controller = new SchedulerTasksController(scope, CATALOGUES)
     controller.start()
     controller.patch(0, { prompt: 'edited' })
@@ -205,7 +209,7 @@ describe('SchedulerTasksController.save', () => {
   })
 
   it('does nothing when the draft is clean', async () => {
-    const scope = new FakeScope()
+    const scope = new FakeForm()
     const controller = new SchedulerTasksController(scope, CATALOGUES)
     controller.start()
     await controller.save()
@@ -213,7 +217,7 @@ describe('SchedulerTasksController.save', () => {
   })
 
   it('does nothing when the document is read-only', async () => {
-    const scope = new FakeScope({ writable: false })
+    const scope = new FakeForm({ writable: false })
     const controller = new SchedulerTasksController(scope, CATALOGUES)
     controller.start()
     controller.patch(0, { prompt: 'edited' })
@@ -222,7 +226,7 @@ describe('SchedulerTasksController.save', () => {
   })
 
   it('drops a second submit while one is in flight', async () => {
-    const scope = new FakeScope()
+    const scope = new FakeForm()
     const controller = new SchedulerTasksController(scope, CATALOGUES)
     controller.start()
     controller.patch(0, { prompt: 'edited' })
@@ -233,7 +237,7 @@ describe('SchedulerTasksController.save', () => {
   })
 
   it('records a rejected mutation and keeps the edit', async () => {
-    const scope = new FakeScope()
+    const scope = new FakeForm()
     vi.spyOn(scope, 'mutate').mockRejectedValueOnce(new Error('offline'))
     const controller = new SchedulerTasksController(scope, CATALOGUES)
     controller.start()
@@ -247,7 +251,7 @@ describe('SchedulerTasksController.save', () => {
   })
 
   it('reports a non-Error rejection as written', async () => {
-    const scope = new FakeScope()
+    const scope = new FakeForm()
     vi.spyOn(scope, 'mutate').mockRejectedValueOnce('gateway closed')
     const controller = new SchedulerTasksController(scope, CATALOGUES)
     controller.start()
@@ -256,20 +260,8 @@ describe('SchedulerTasksController.save', () => {
     expect(controller.source.getSnapshot().error).toBe('gateway closed')
   })
 
-  it('copies the weekday list so a later edit cannot reach the submitted value', async () => {
-    const scope = new FakeScope({ value: { tasks: [task({ weekdays: [1, 2] })] } })
-    const controller = new SchedulerTasksController(scope, CATALOGUES)
-    controller.start()
-    controller.patch(0, { prompt: 'edited' })
-    await controller.save()
-    const submitted = (scope.mutations[0]?.ops as { value: SchedulerTask[] }[])[0]?.value
-    // The submitted list is a copy: mutating it cannot reach the stored draft.
-    submitted![0]?.weekdays?.push(5)
-    expect(controller.source.getSnapshot().draft[0]?.weekdays).toEqual([1, 2])
-  })
-
   it('keeps the edit editable when the host keeps a different document', async () => {
-    const scope = new FakeScope()
+    const scope = new FakeForm()
     scope.refuseWith = { tasks: [task({ prompt: 'someone else won' })] }
     const controller = new SchedulerTasksController(scope, CATALOGUES)
     controller.start()
@@ -284,7 +276,7 @@ describe('SchedulerTasksController.save', () => {
   })
 
   it('retries successfully after adopting the refused revision', async () => {
-    const scope = new FakeScope()
+    const scope = new FakeForm()
     scope.refuseWith = { tasks: [task({ prompt: 'someone else won' })] }
     const controller = new SchedulerTasksController(scope, CATALOGUES)
     controller.start()
@@ -297,12 +289,13 @@ describe('SchedulerTasksController.save', () => {
   })
 
   it('reports a namespace that went away as a refused write', async () => {
-    const scope = new FakeScope()
+    const scope = new FakeForm()
     const controller = new SchedulerTasksController(scope, CATALOGUES)
     controller.start()
     controller.patch(0, { prompt: 'edited' })
     vi.spyOn(scope, 'mutate').mockImplementationOnce(async () => {
       scope.snapshot = { ...scope.snapshot, value: undefined, status: 'loading' }
+      return false
     })
     await controller.save()
     expect(controller.source.getSnapshot().error).toBe('the host did not accept this change')

@@ -10,11 +10,12 @@ Source: [`packages/scheduler/scheduler/src/types.ts`](../../packages/scheduler/s
 
 ```ts type-equiv
 /**
- * One daily wall-clock task. Structure is validated wherever the task is
- * authored; the references it names are resolved when it is armed.
+ * One daily wall-clock task. Its structure — id, time, zone, and weekdays — is
+ * validated when the plugin loads and on every re-arm; the references it names
+ * are resolved when it is armed.
  */
 interface SchedulerTask {
-  /** Stable task id naming this task in diagnostics, its Session title, and message provenance. */
+  /** Stable task id naming this task in diagnostics, its Session title, and the scheduler metadata on the messages it admits. */
   readonly id: string
   /**
    * Whether this task is armed. Omission means enabled; `false` pauses the task
@@ -32,7 +33,7 @@ interface SchedulerTask {
    * Weekdays this task runs on, `0` (Sunday) through `6` (Saturday). Omission
    * runs it every day. An empty list is refused, because it never runs.
    */
-  readonly weekdays?: number[]
+  readonly weekdays?: readonly number[]
   /** Prompt text admitted as the created Session's first turn. */
   readonly prompt: string
   /**
@@ -94,10 +95,10 @@ interface DailySchedule {
 
 ## 结构与引用
 
-任务的结构——其 id、挂钟时间、时区与星期——在进程运行期间不会改变，因此不可能成立的结构会在编写处被拒绝。任务引用的所有东西——工作区目录、权限预设与 Agent 预设名单——都可能改变，因此不可用的引用只会让该任务不进入挂载集合，而其余调度继续运行。若在写入时解析引用，一个被删除的目录就会让整个挂载在下一次启动时被拒绝。
+任务的结构——其 id、挂钟时间、时区与星期——在插件加载时校验一次，并在每次重新挂载时再次校验，因为已存储的任务列表也可能在编写它的页面之外被改动。任务引用的所有东西——工作区目录、权限预设与 Agent 预设名单——都在同一次重新挂载时解析，因此不可用的引用只会让该任务不进入挂载集合，而其余调度继续运行。若在写入时解析引用，一个被删除的目录就会让整个挂载在下一次启动时被拒绝。
 
 ## 挂载、到点与释放
 
 `TaskRuntime` 朝着下一次到点挂载一段有上限的 `setTimeout`，并在每次唤醒时重读挂钟时间，因此系统时钟调整或夏令时切换都无法留下过期的目标。目标始终严格位于未来，这正是进程未运行时错过的时间被跳过而不是被补上的原因。若某个运行在自身下一次到点到达时仍在进行，该次到点即为逾期，并以同样方式被跳过。
 
-一次到点会在任务的工作区中创建一个根 Session，应用权限预设与标题，把提示词作为携带 `kind: "scheduler"` 来源信息的普通用户角色消息送入，在一小时期限等待该轮次结束，然后释放 Agent。提示词被接收之前的失败会解除工作区绑定并释放 Agent；接收之后的失败是该运行自身的持久结果，不会被回滚。
+一次到点会在任务的工作区中创建一个根 Session，应用权限预设与标题，把提示词作为携带 `kind: "scheduler"` 的普通用户角色消息送入，在一小时期限等待该轮次结束，然后释放 Agent。提示词被接收之前的失败会解除工作区绑定并释放 Agent；接收之后的失败是该运行自身的持久结果，不会被回滚。

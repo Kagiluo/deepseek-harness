@@ -1,22 +1,24 @@
 /**
  * Apply-world controller for the Scheduled tasks page.
  *
- * Owns the draft in a snapshot store, keeps it mirrored from the settings scope
- * and two Host catalogs, and performs the one atomic write the page submits.
- * The component never touches `ctx`: it reads the store through the bound
- * `useSchedulerTasks` seat and calls the callbacks this controller exposes.
+ * Owns the draft in a snapshot store, keeps it mirrored from the `scheduler`
+ * configuration form and two Host catalogs, and performs the one atomic write
+ * the page submits. The component never touches `ctx`: it reads the store
+ * through the bound `useSchedulerTasks` seat and calls the callbacks this
+ * controller exposes.
  */
 
 import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
-import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client'
+import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { SchedulerTask } from '@deepseek-ai/dsh-scheduler'
 import {
   initialSchedulerTasksState, schedulerTasksActions as actions,
   type SchedulerPatch, type SchedulerTasksState, type SchedulerWorkspaceOption,
 } from './tasks-store.ts'
 
-/** The section this page reads and writes. */
-interface SchedulerSection {
+/** The `scheduler` entry's section: the task list this page reads and writes. */
+export interface SchedulerSection {
+  /** Tasks the host resolves over the composition base and the stored user layer. */
   tasks: SchedulerTask[]
 }
 
@@ -26,8 +28,8 @@ export interface SchedulerCatalogues {
   workspaces: () => SchedulerWorkspaceOption[]
   /** Agent presets the roster configures, in roster order. */
   presets: () => Promise<{ id: string; name: string }[]>
-  /** Permission presets that do not require approval. */
-  permissionPresets: () => { id: string; name: string }[]
+  /** Permission presets the host advertises, in catalog order. */
+  permissionPresets: () => Promise<{ id: string; name: string }[]>
 }
 
 /** Controls one mounted Scheduler settings page. */
@@ -36,12 +38,12 @@ export class SchedulerTasksController {
   private readonly store = createSnapshotStore(initialSchedulerTasksState())
 
   /**
-   * Construct the controller over one bound settings scope.
-   * @param scope - the `scheduler` namespace scope.
+   * Construct the controller over the `scheduler` entry's configuration form.
+   * @param scope - the configuration form bound to the `scheduler` Host entry.
    * @param catalogues - Host catalog readers for the three pickers.
    */
   constructor(
-    private readonly scope: SettingsScope<SchedulerSection>,
+    private readonly scope: ConfigForm<SchedulerSection>,
     private readonly catalogues: SchedulerCatalogues,
   ) {}
 
@@ -51,7 +53,7 @@ export class SchedulerTasksController {
   }
 
   /**
-   * Subscribe to the settings scope so every committed change refreshes the
+   * Subscribe to the configuration form so every committed change refreshes the
    * draft, and publish the initial projection.
    * @returns the disposer removing the subscription.
    */
@@ -63,18 +65,20 @@ export class SchedulerTasksController {
   /**
    * Refresh the picker catalogs, which come from Host reads rather than from the
    * settings document.
-   * @returns fulfillment after the asynchronous roster read settles.
+   * @returns fulfillment after the asynchronous catalog reads settle.
    */
   async refreshCatalogues(): Promise<void> {
-    // A refused roster read leaves the picker with no options rather than
-    // failing the page: an agent preset is optional on most tasks.
+    // A refused read leaves its picker with no options rather than failing the
+    // page: an agent preset is optional on most tasks, and a deployment with no
+    // permission service advertises no preset.
     const presets = await this.catalogues.presets().catch(() => [])
+    const permissionPresets = await this.catalogues.permissionPresets().catch(() => [])
     this.store.update((draft) => {
-      actions.options(draft, this.catalogues.workspaces(), presets, this.catalogues.permissionPresets())
+      actions.options(draft, this.catalogues.workspaces(), presets, permissionPresets)
     })
   }
 
-  /** Project the settings scope onto the draft the page renders. */
+  /** Project the configuration form onto the draft the page renders. */
   private refresh(): void {
     const snapshot = this.scope.getSnapshot()
     if (snapshot.status === 'unavailable') {
@@ -139,11 +143,12 @@ export class SchedulerTasksController {
     const before = this.store.getSnapshot()
     if (!before.dirty || before.saving || !before.writable) return
     // A plain copy, not `structuredClone`: the store's drafts are Immer-frozen
-    // and structuredClone refuses a frozen proxy.
-    const submitted = before.draft.map(task => ({
-      ...task,
-      ...(task.weekdays === undefined ? {} : { weekdays: [...task.weekdays] }),
-    }))
+    // and structuredClone refuses a frozen proxy. The weekday list is copied so
+    // the wire carries a plain JSON array rather than the task's read-only one.
+    const submitted = before.draft.map(task => {
+      const { weekdays, ...rest } = task
+      return { ...rest, ...(weekdays === undefined ? {} : { weekdays: [...weekdays] }) }
+    })
     this.store.update((draft) => { actions.saving(draft) })
     try {
       await this.scope.mutate([{ op: 'set', path: ['tasks'], value: submitted }], before.revision)

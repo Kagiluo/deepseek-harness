@@ -25,7 +25,7 @@ Scheduler 包族让你挑选的时间自动运行提示词。每次到达设定�
 | 包 | 作用 | ctx 键 |
 |---|---|---|
 | [`scheduler/`](scheduler/README.zh.md) | 每日挂钟时间计时与无人值守会话事务 | 消费 `ctx.agents`、`ctx.workspaceRegistry`、`ctx.sessionTitle`、`ctx.permissionPresets`、`ctx.agentDefaultModel`、`ctx.sessions` |
-| [`../client/ui-scheduler/`](../client/ui-scheduler/README.zh.md) | 基于 `scheduler` 命名空间的定时任务设置页 | 消费 `ctx.settingsScope`、`ctx.settingsSchema`、`ctx.remote`、`ctx.workspaces` |
+| [`../client/ui-scheduler/`](../client/ui-scheduler/README.zh.md) | 基于 `scheduler` 设置条目的定时任务设置页 | 消费 `ctx.configForms`、`ctx.remote`、`ctx.workspaces` |
 
 <a id="related-documentation"></a>
 ## 相关文档

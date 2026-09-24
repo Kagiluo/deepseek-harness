@@ -1,12 +1,14 @@
 /**
  * Real Loader composition: the function plugin's `name`/`inject`/`Config`/`apply`
- * namespace arrives intact through the shipped composition path, its settings
- * namespace registers, and a committed task list arms one runtime per resolvable
- * task while leaving the rest of the schedule running.
+ * namespace arrives intact through the shipped composition path, the plugin
+ * opts out of the generated settings form, and a volatile task-list update
+ * re-arms one runtime per resolvable task while leaving the rest of the
+ * schedule running.
  *
  * Nothing here is a hand-built `ctx.plugin(...)` call: the plugin is loaded by
  * the Loader from a cordis.yml, with its session-creation dependencies provided
- * as fixtures, so the function-plugin export form is exercised as shipped.
+ * as fixtures, so the function-plugin export form, the volatile config commit,
+ * and the `loader/volatile-update` notification are exercised as shipped.
  */
 
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
@@ -18,7 +20,7 @@ import Include from '@deepseek-ai/cordis-plugin-include'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as Scheduler from '../src/index.ts'
-import { SCHEDULER_SETTINGS_NAMESPACE, validateTaskStructure, type Config } from '../src/index.ts'
+import { validateTaskStructure, type Config } from '../src/index.ts'
 import type { SchedulerTask } from '../src/types.ts'
 
 let root: string | undefined
@@ -33,21 +35,16 @@ afterEach(async () => {
   root = undefined
 })
 
-/** One declared task and the settings hooks the fixture captures. */
+/** The fixture's observations and the way it drives the live task list. */
 interface Fixture {
-  readonly events: string[]
   readonly warnings: string[]
   readonly created: string[]
   /** Absolute workspace directory the fixture registry resolves and tasks name. */
   readonly workspace: string
-  /** The stored task list the fixture reports as the resolved section. */
-  tasks: SchedulerTask[]
-  /** The stored validation the settings section installs. */
-  validate: ((value: { tasks: unknown[] }) => void) | undefined
-  /** Notify the plugin that the stored list changed. */
-  onChange: (() => void) | undefined
-  /** Resolves once the section has installed. */
-  installed: PromiseWithResolvers<undefined>
+  /** The generated-form policy the plugin registered, or undefined before it lands. */
+  auto: boolean | undefined
+  /** Replace the scheduler entry's live volatile task list through the Loader. */
+  setTasks: (tasks: SchedulerTask[]) => Promise<void>
 }
 
 /**
@@ -61,16 +58,17 @@ async function boot(): Promise<Fixture> {
   const configPath = join(root, 'cordis.yml')
   await writeFile(configPath, [
     '- name: fixture-dependencies',
-    "- name: '@deepseek-ai/dsh-scheduler'",
+    '- id: scheduler',
+    "  name: '@deepseek-ai/dsh-scheduler'",
     '  config:',
     '    tasks: []',
     '',
   ].join('\n'))
 
-  const installed = Promise.withResolvers<undefined>()
+  const configured = Promise.withResolvers<undefined>()
   const fixture: Fixture = {
-    events: [], warnings: [], created: [], workspace,
-    tasks: [], validate: undefined, onChange: undefined, installed,
+    warnings: [], created: [], workspace, auto: undefined,
+    setTasks: async () => { throw new Error('the scheduler entry was not loaded') },
   }
 
   const dependencies = {
@@ -113,30 +111,13 @@ async function boot(): Promise<Fixture> {
           return { approval: 'never' }
         },
       } as never)
-      // The optional settings provider: `installSection` is the seam the Web
-      // profile supplies and a bare profile omits.
+      // The optional settings provider: the plugin injects it only to declare
+      // that this entry ships its own page instead of a generated form.
       ctx.provide('settings', {
-        installSection: (
-          _owner: Context,
-          ns: string,
-          schema: unknown,
-          entry: unknown,
-          hooks: {
-            validate?: (value: { tasks: unknown[] }) => void
-            setSource: (current: () => { tasks: SchedulerTask[] }) => void
-            onChange: () => void
-          },
-        ) => {
-          fixture.events.push(`section:${ns}`)
-          expect(schema).toBeDefined()
-          expect(entry).toEqual({ tasks: [] })
-          fixture.validate = hooks.validate
-          fixture.onChange = hooks.onChange
-          // `installSection` hands out `setSource` so the consumer can learn
-          // where the resolved section comes from; the fixture supplies its own
-          // reader, which is what a real settings provider does.
-          hooks.setSource(() => ({ tasks: fixture.tasks }))
-          installed.resolve(undefined)
+        configure: (presentation: { auto?: boolean }) => {
+          fixture.auto = presentation.auto
+          configured.resolve(undefined)
+          return () => {}
         },
       } as never)
     },
@@ -164,7 +145,12 @@ async function boot(): Promise<Fixture> {
     config: { path: pathToFileURL(configPath).href },
   })
   await context.loader.await()
-  await installed.promise
+  await configured.promise
+  const entry = [...context.loader.entries()].find(candidate => candidate.options.id === 'scheduler')
+  if (entry === undefined) throw new Error('the scheduler entry was not loaded')
+  // A volatile-only config change commits into the running references and
+  // notifies the owning fiber, which is exactly the settings write path.
+  fixture.setTasks = async (tasks) => { await entry.update({ config: { tasks } }) }
   return fixture
 }
 
@@ -182,27 +168,23 @@ function task(workspace: string, id: string, overrides: Partial<SchedulerTask> =
 }
 
 describe('real Loader composition', () => {
-  it('loads the function-plugin namespace and registers its settings section', { timeout: 60_000 }, async () => {
+  it('loads the function-plugin namespace and opts out of the generated form', { timeout: 60_000 }, async () => {
     const fixture = await boot()
     expect([...context!.loader.entries()].filter(entry => entry.fiber === undefined && !entry.disabled)).toEqual([])
-    expect(fixture.events).toContain(`section:${SCHEDULER_SETTINGS_NAMESPACE}`)
-    // The section revalidates what a write path stores, so a task that could
-    // never run is refused at the write instead of being armed and ignored.
-    expect(fixture.validate).toBeDefined()
-    expect(() => fixture.validate?.({ tasks: [task(fixture.workspace, 'x', { time: 'nope' })] })).toThrow()
-    expect(() => fixture.validate?.({ tasks: [task(fixture.workspace, 'x')] })).not.toThrow()
+    // `configure({ auto: false })` is what removes the Loader-generated form for
+    // this entry now that its own `Config` is the settings schema.
+    expect(fixture.auto).toBe(false)
   })
 
   it('arms one runtime per resolvable task and reports the skipped ones', { timeout: 60_000 }, async () => {
     const fixture = await boot()
     // Publish a stored list: one resolvable task, one whose preset is not
     // admissible, and one paused by its author.
-    fixture.tasks = [
+    await fixture.setTasks([
       task(fixture.workspace, 'good'),
       task(fixture.workspace, 'asking', { permissionPreset: 'never' }),
       task(fixture.workspace, 'paused', { enabled: false }),
-    ]
-    fixture.onChange?.()
+    ])
     await vi.waitFor(() => { expect(fixture.warnings.some(line => line.includes('is not armed'))).toBe(true) })
     // The eligible preset is the only one the fixture resolves; a task naming
     // anything else is skipped with a warning that names it.
@@ -211,14 +193,26 @@ describe('real Loader composition', () => {
     expect(fixture.warnings.some(line => line.includes('"paused"'))).toBe(false)
   })
 
+  it('logs a re-arm failure for a stored task whose structure is impossible', { timeout: 60_000 }, async () => {
+    const fixture = await boot()
+    // The schema admits both records; only the structural check can refuse the
+    // duplicate id, and that check now runs on every re-arm rather than at write.
+    await fixture.setTasks([
+      task(fixture.workspace, 'duplicate'),
+      task(fixture.workspace, 'duplicate', { prompt: 'second' }),
+    ])
+    await vi.waitFor(() => { expect(fixture.warnings.some(line => line.includes('re-arm failed'))).toBe(true) })
+    expect(fixture.warnings.some(line => line.includes('duplicate scheduler task id'))).toBe(true)
+    await vi.advanceTimersByTimeAsync(90 * 60 * 1000 + 1)
+    expect(fixture.created).toEqual([])
+  })
+
   it('disposes the previous arm set when a later task list replaces it', { timeout: 60_000 }, async () => {
     const fixture = await boot()
-    fixture.tasks = [task(fixture.workspace, 'first')]
-    fixture.onChange?.()
+    await fixture.setTasks([task(fixture.workspace, 'first')])
     // Let the first resolution settle so it actually armed a runtime.
     await vi.advanceTimersByTimeAsync(0)
-    fixture.tasks = [task(fixture.workspace, 'second')]
-    fixture.onChange?.()
+    await fixture.setTasks([task(fixture.workspace, 'second')])
     await vi.advanceTimersByTimeAsync(0)
     // Reach the occurrence: only the replacement task runs, because the first
     // runtime was disposed by the swap.
@@ -231,10 +225,9 @@ describe('real Loader composition', () => {
     const fixture = await boot()
     // Two changes in one tick: the first resolution is superseded by the
     // second, and only the newer task list may end up armed.
-    fixture.tasks = [task(fixture.workspace, 'stale')]
-    fixture.onChange?.()
-    fixture.tasks = [task(fixture.workspace, 'current')]
-    fixture.onChange?.()
+    const first = fixture.setTasks([task(fixture.workspace, 'stale')])
+    const second = fixture.setTasks([task(fixture.workspace, 'current')])
+    await Promise.all([first, second])
     await vi.advanceTimersByTimeAsync(90 * 60 * 1000 + 1)
     await vi.waitFor(() => { expect(fixture.created.length).toBeGreaterThan(0) })
     // Only the second generation's task ran; the superseded one discarded its
@@ -244,8 +237,7 @@ describe('real Loader composition', () => {
 
   it('arms a task that actually comes due and releases it on unload', { timeout: 60_000 }, async () => {
     const fixture = await boot()
-    fixture.tasks = [task(fixture.workspace, 'good')]
-    fixture.onChange?.()
+    await fixture.setTasks([task(fixture.workspace, 'good')])
     // Reach 09:30 UTC; the run creates one Session through the fixture registry.
     await vi.advanceTimersByTimeAsync(90 * 60 * 1000 + 1)
     await vi.waitFor(() => { expect(fixture.created).toHaveLength(1) })
@@ -270,14 +262,15 @@ describe('real Loader composition', () => {
   it('defaults the deployment task layer to an empty list', () => {
     // The schema's call signature takes the resolved value; a real caller feeds
     // it raw cordis.yml data, so this exercises that boundary.
-    expect((Scheduler.Config as unknown as (data: unknown) => Config)({})).toEqual({ tasks: [] })
+    const resolved = (Scheduler.Config as unknown as (data: unknown) => Config)({})
+    expect(resolved.tasks.get()).toEqual([])
   })
 
   it('refuses a structurally impossible deployment task at load', () => {
     expect(() => (Scheduler.Config as unknown as (data: unknown) => Config)({ tasks: [{ id: 'x' }] })).toThrow()
   })
 
-  it('exports the structure check the settings write path reuses', () => {
+  it('exports the structure check the settings page mirrors', () => {
     expect(Scheduler.validateTaskStructure).toBe(validateTaskStructure)
   })
 })

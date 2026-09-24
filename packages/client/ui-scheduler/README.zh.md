@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-用这个页面在浏览器中安排 agent 工作：添加任务、选择其运行的工作区、设定时间与星期、编写提示词，并挑选权限预设与 Agent 预设。每个任务在时间到达时启动自己的会话，因此你之后像阅读其他任何会话一样阅读记录。编辑的是本地草稿——整份列表作为一次保存提交，半成品任务绝不会被存储。该页拒绝保存 Host 会拒绝的任务，并且只提供此部署可在无人值守下运行的权限预设。
+用这个页面在浏览器中安排 agent 工作：添加任务、选择其运行的工作区、设定时间与星期、编写提示词，并挑选权限预设与 Agent 预设。每个任务在时间到达时启动自己的会话，因此其记录像其他任何会话一样阅读。编辑的是本地草稿：整份列表一次保存，任务不合法时无法保存。半成品任务绝不会被存储，而会请求审批的权限预设由 Host 拒绝，因为定时任务运行时无人在场。
 
 ## 目录
 
@@ -25,7 +25,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用此包
 
-把该插件与设置外壳以及 Host 的 `@deepseek-ai/dsh-scheduler` 包一起挂载；设置中随即出现一个**定时任务**页，位置在 Agent 预设之后。随发布的 Web 组合同时挂载两者。添加任务并按下保存会把列表写入 `scheduler` 命名空间，Host 无需重启即会重新挂载每个任务。
+把该插件与设置外壳以及 Host 的 `@deepseek-ai/dsh-scheduler` 包一起挂载；设置中随即出现一个**定时任务**页，位置在 Agent 预设之后。随发布的 Web 组合同时挂载两者。添加任务并按下保存会把列表写入 `scheduler` 设置条目，Host 无需重启即会重新挂载每个任务。
 
 成功的表现是：任务带着其标题出现在列表中，其下一次到点在部署存活期间运行，并且一个以任务 id 命名的会话出现在你所选的工作区中，其中保存着你的提示词。
 
@@ -43,7 +43,7 @@ kind: "package-reference"
 - **时区**是解读该时间所用的可选 IANA 时区；留空则使用进程时区。
 - **星期**选择任务运行的日期。全选时不存储日期列表，这正是“每天”的默认值。
 - **提示词**作为会话的第一条消息发送。
-- **权限预设**必须是从不请求审批的那一类，因为定时任务运行时无人在场。
+- **权限预设**会在运行前应用；审批策略不是 `never` 的预设会被 Host 拒绝，因为定时任务运行时无人在场。
 - **Agent 预设**是会话加入的组合，适用于部署配置了名单的情况。
 - **启用**暂停任务而不删除。
 
@@ -51,7 +51,7 @@ kind: "package-reference"
 
 ### 校验与保存失败
 
-该页校验 Host 会拒绝的同一套结构——非空且唯一的 id、已选择的工作区、`HH:MM:SS` 形式的时间、至少一天、非空提示词，以及权限预设——因此保存绝不会把本可立即显示出来的拒绝再绕一圈。当 Host 仍然拒绝写入时，消息出现在页脚旁，草稿保持可编辑以便重试。Host 保留下来的文档与提交内容不一致时，会以同样方式报告，而不会被当作已存储。
+该页在保存前校验每个任务——非空且唯一的 id、已注册的工作区、`HH:MM:SS` 形式的时间、至少一天、非空提示词，以及权限预设——因此常见错误会显示在字段旁，而不会绕一圈。写入本身按字段 schema 接受，因此 Host 自身的 `validateTaskStructure` 会在挂载该列表时运行，并把结构上不可能成立的列表记录到进程日志。当 Host 仍然拒绝写入时，消息出现在页脚旁，草稿保持可编辑以便重试。Host 保留下来的文档与提交内容不一致时，会以同样方式报告，而不会被当作已存储。
 
 ### 删除任务
 
@@ -69,7 +69,7 @@ kind: "package-reference"
 
 ### 作用域与组合
 
-该插件声明 `inject = ['slots', 'locale', 'remote', 'settingsScope', 'settingsSchema', 'workspaces']`，并注册一个 `settings.section` 条目，`id: 'scheduled-tasks'`，`order: 25`。`ctx.workspaces` 通过 `ctx.get` 读取，因此没有 workspace 服务的部署仍能挂载该页，只是选择器为空。
+该插件声明 `inject = ['slots', 'locale', 'remote', 'remote.agentPresets', 'remote.permissionPresets', 'configForms', 'workspaces']`，并注册一个 `settings.section` 条目，`id: 'scheduled-tasks'`，`order: 25`。`configForms` 承载 `scheduler` 条目的值与写入队列。两个带点的 Remote 命名空间单独声明，因为生成的 Remote 命名空间各自就是服务：只有当其带点名称出现在注入集合中时，`ctx.remote` 的属性代理才会解析它。
 
 ### 设计理念
 
@@ -77,7 +77,7 @@ kind: "package-reference"
 
 - **一次原子写入。** settings 线路会整体替换数组，因此该页编辑本地草稿并把整份列表作为一次变更提交。逐键写入会发布半成品任务。
 - **草稿被栅栏保护。** 每次保存都携带草稿起始时的 revision，因此来自另一界面的提交会被拒绝，而不是被静默覆盖。被拒的保存保留编辑内容并采纳更新的 revision，以便重试能够落地。
-- **不在客户端重述任何策略。** 权限选择器从 Host 自身的命名空间 schema 中读取可用的预设名，而该 schema 正是 Host 所声明常量的并集。未挂载权限服务的部署会注册普通字符串，此时选择器就是空的。
+- **不在客户端重述任何策略。** 权限选择器列出部署 Remote 目录公布的全部预设，而审批策略不是 `never` 的预设由 Host 在挂载任务时拒绝。
 - **组件绝不接触 `ctx`。** 控制器在快照 store 中持有草稿；组件通过绑定的 `useSchedulerTasks` 席位读取它，并调用 apply 闭包注入的回调。
 
 ### 源码导览
@@ -85,7 +85,7 @@ kind: "package-reference"
 | 文件 | 作用 |
 |---|---|
 | [`src/client/index.ts`](src/client/index.ts) | 插件入口：`inject`、字典、控制器，以及 `settings.section` 注册 |
-| [`src/client/controller.ts`](src/client/controller.ts) | 草稿 store、settings 作用域镜像、目录刷新，以及那一次原子保存 |
+| [`src/client/controller.ts`](src/client/controller.ts) | 草稿 store、配置表单镜像、目录刷新，以及那一次原子保存 |
 | [`src/client/tasks-store.ts`](src/client/tasks-store.ts) | 草稿状态与新增、修补、删除、放弃的动作表 |
 | [`src/client/SchedulerSection.tsx`](src/client/SchedulerSection.tsx) | 页面：字段渲染、客户端校验与删除确认 |
 | [`src/client/locales.ts`](src/client/locales.ts) | 该页的英文与中文词典 |
@@ -93,13 +93,13 @@ kind: "package-reference"
 
 ### 镜像与刷新
 
-控制器订阅已绑定的 `scheduler` 命名空间作用域，并把每个被接受的 section 投影到草稿上。进行中的编辑绝不会被后台刷新覆盖，且栅栏被有意不推进：保持草稿起始时的 revision，正是让并发提交成为被拒写入而不是静默覆盖的原因。
+控制器订阅 `scheduler` 配置表单，并把每个被接受的 section 投影到草稿上。进行中的编辑绝不会被后台刷新覆盖，且栅栏被有意不推进：保持草稿起始时的 revision，正是让并发提交成为被拒写入而不是静默覆盖的原因。
 
-选择器目录来自 Host 读取而非 settings 文档。工作区列表从已注册的 workspace 同步读取，Agent 预设名单来自异步 `agentPresets.list` 调用（失败时选择器没有选项），权限预设则从共享 describe 镜像中的命名空间 schema 解码。三者在转发的 `settings/document-updated` 事件上一并刷新。
+选择器目录来自 Host 读取而非 settings 文档。工作区列表从已注册的 workspace 同步读取，Agent 预设名单来自异步 `agentPresets.list` 调用，权限预设来自 `permissionPresets.catalog` Remote 方法。三者在属于本条目的转发 `settings/document-updated` 事件以及每次 `permission-presets/catalog-changed` 事件上一并刷新；某次读取失败只会让对应选择器为空，而不会让整页失败。
 
-### 解码权限预设
+### 权限预设
 
-按命名空间的作用域携带解析后的值，但不携带该命名空间的 schema，因此可用名称读自共享 describe 镜像，并通过 settings 拥有的 schema 服务重新水合。这里的遍历是显式的，而不是走单键的 `nodeAtPath` 辅助函数——后者会下探数组却不消费指向其元素内字段的键。并集节点由其成员列表识别；普通字符串节点没有成员列表，这正是未挂载权限服务的部署。
+权限表的 Remote 目录只携带每个预设的 `value` 与展示用 `name`，不携带其审批策略，因此该页无法分辨哪些预设可无人值守运行。它列出目录中的全部预设，把 `never` 要求留给 Host：任务挂载时，Host 会拒绝预设会请求审批的任务。
 
 ### 草稿语义
 
@@ -116,10 +116,10 @@ kind: "package-reference"
 
 - [Scheduler Host 包](../../scheduler/scheduler/README.zh.md)——挂载此页所写任务的插件。
 - [Scheduler 子系统](../../../docs/subsystems/scheduler.zh.md)——共享任务词汇与从挂载到释放的时序约定。
-- [设置外壳](../ui-settings/README.zh.md)——拥有此页所消费 settings 作用域与 schema 服务的领域基座。
+- [设置外壳](../ui-settings/README.zh.md)——拥有此页所消费 `ctx.configForms` 服务的领域基座。
 - [Slots 参考](../../../docs/subsystems/slots.zh.md)——设置分区如何注册并接收其 props。
 - [Agent 预设](../ui-agent-preset/README.zh.md)——Agent 预设选择器所列出的名单。
-- [权限预设](../ui-permission-presets/README.zh.md)——此页筛选出无人值守选项的预设族。
+- [权限预设](../ui-permission-presets/README.zh.md)——其目录填充此页权限选择器的预设族。
 
 -----
 
@@ -152,7 +152,7 @@ kind: "package-reference"
 - **仅支持整表写入**——settings 线路整体替换数组，因此两个界面同时编辑列表时以 revision 栅栏裁决而非合并；第二次保存会被拒绝并保留其草稿。
 - **页面中没有运行历史**——该页只显示配置，绝不显示某任务是否运行、成功或失败。结果位于进程日志与所创建的会话中。
 - **跨重启没有暂停**——用“启用”开关暂停的任务因该标志被存储而保持暂停，但没有任何东西会在运行失败后自动暂停任务。
-- **预设选择器反映 Host 读取**——Agent 预设名单读取失败只会让选择器为空，而不会阻塞该页，因此在后续刷新成功之前，任务可以在没有 Agent 预设的情况下保存。
+- **预设选择器反映 Host 读取**——Agent 预设名单读取失败只会让该选择器为空，而不会阻塞该页，因此在后续刷新成功之前，任务可以在没有 Agent 预设的情况下保存；权限目录读取失败则不提供任何可选权限预设。
 
 <a id="dev-note"></a>
 ### 开发备注
@@ -162,6 +162,6 @@ kind: "package-reference"
 
 本 Dev Note 是维护者的工作上下文：尚未决定的方向。它明确不具权威性——已发布的行为、限制与既有理由位于上文各节、包代码以及所链接的 Agent Note 中。
 
-显示每个任务的下一次到点，以及按任务的上次运行结果，都归属于 Host 包的运行时而不是此页，目前没有设计负责人。该页目前只在 settings 文档变更时刷新目录；页面打开期间注册的工作区会在下次刷新时出现，而实时订阅不属于已发布范围。
+显示每个任务的下一次到点，以及按任务的上次运行结果，都归属于 Host 包的运行时而不是此页，目前没有设计负责人。该页在本条目的转发 settings 变更与每次权限目录变更时刷新目录，并同时重读工作区列表；实时工作区订阅不属于已发布范围。
 
 </details>

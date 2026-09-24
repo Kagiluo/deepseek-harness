@@ -51,7 +51,7 @@ kind: "package-reference"
 
 | 字段 | 默认值 | 含义 |
 |---|---|---|
-| `id` | `required` | 稳定 id；在任务之间唯一，用于命名会话标题，并随提示词的来源信息传递 |
+| `id` | `required` | 稳定 id；在任务之间唯一，用于命名会话标题，并作为提示词消息的调度器元数据传递 |
 | `workspacePath` | `required` | 会话运行所在目录的绝对路径，且该目录必须存在 |
 | `time` | `required` | 本地挂钟时间，24 小时制 `HH:MM:SS` |
 | `prompt` | `required` | 作为所创建会话第一条消息送入的文本 |
@@ -66,9 +66,9 @@ kind: "package-reference"
 
 ### 在 GUI 中编写任务
 
-配套包 [`@deepseek-ai/dsh-client-ui-scheduler`](../../client/ui-scheduler/README.zh.md) 在设置中增加一个**定时任务**页。它编辑本地草稿，并把整份任务列表作为一次写入提交，因此半成品任务绝不会被存储。该页校验 Host 会拒绝的同一套结构，因此结构上不可能成立的任务根本无法保存。它的权限预设选择器只提供此部署可无人值守运行的预设，并且这份列表读自 Host 自身的 schema，而不是在客户端重述策略。
+配套包 [`@deepseek-ai/dsh-client-ui-scheduler`](../../client/ui-scheduler/README.zh.md) 在设置中增加一个**定时任务**页。它编辑本地草稿，并把整份任务列表作为一次写入提交，因此半成品任务绝不会被存储。该页会报告它能在写入前检查的结构规则，但设置通道只接受字段 schema：`validateTaskStructure` 在插件加载时以及每次重新挂载时运行，因此真正到达存储、结构上不可能成立的列表会让先前的挂载集合继续运行，并被记录到进程日志，而不是在写入处被拒绝。它的权限预设选择器提供该部署公布的全部预设，审批策略不是 `never` 的预设会在任务挂载时被拒绝。
 
-没有 Web 界面的部署可以仅通过 `Config` 设置任务：插件通过 `ctx.get` 读取可选的 settings 服务，因此无界面组合无需该服务即可调度。
+没有 Web 界面的部署可以仅通过 `Config` 设置任务：插件只是有条件地注入 settings 服务以退出 Loader 生成的表单，因此无界面组合无需该服务即可调度。
 
 ### 任务错过时间时
 
@@ -90,7 +90,7 @@ kind: "package-reference"
 
 ### 作用域与组合
 
-该插件声明 `inject = ['agents', 'agentDefaultModel', 'permissionPresets', 'sessions', 'sessionTitle', 'workspaceRegistry']`，因此缺少任一会话创建服务都属于组合错误。`agentPresets` 与 `settings` 被有意排除在外：部署可能不配置名单，裸 profile 也不挂载 settings 服务，因此两者都通过 `ctx.get` 读取。
+该插件声明 `inject = ['agents', 'agentDefaultModel', 'permissionPresets', 'sessions', 'sessionTitle', 'workspaceRegistry']`，因此缺少任一会话创建服务都属于组合错误。`agentPresets` 被有意排除在外：部署可能不配置名单，因此插件通过 `ctx.get` 读取该可选服务。`settings` 同样不在其中，它只被有条件地注入，用于退出 Loader 生成的设置表单，因为本包自带页面。
 
 ### 设计理念
 
@@ -98,7 +98,7 @@ kind: "package-reference"
 
 - **没有持久调度状态。** 运行所创建的会话是唯一的持久记录。既没有补跑队列、没有错过的到点日志，也没有持久化的上次触发标记，因此插件无法与自身历史产生偏差。
 - **纯粹的到点运算。** `nextOccurrence` 不读时钟：由调用方传入 `now`，因此每次唤醒都从挂钟时间重新推导，系统调整或夏令时切换都无法留下过期目标。
-- **结构在编写处校验，引用在挂载时解析。** 任务的 id、时间、时区与星期不会改变，因此不可能成立的结构在写入处即被拒绝。其工作区目录、权限预设与 Agent 预设名单会改变，因此不可用的引用只跳过该任务，其余调度继续运行。
+- **结构在加载时与每次重新挂载时校验，引用在挂载时解析。** 任务的 id、时间、时区与星期会在插件挂载该列表时检查，包括在设置页面之外被改动的列表。其工作区目录、权限预设与 Agent 预设名单在同一次处理中解析，因此不可用的引用只跳过该任务，其余调度继续运行。
 - **从构造上就是无人值守。** 定时运行没有人可以应答审批请求，因此审批策略不是 `never` 的预设会在挂载时被拒绝，而不会被允许无限期停住该运行。
 
 ### 源码导览
@@ -109,7 +109,7 @@ kind: "package-reference"
 | [`src/types.ts`](src/types.ts) | `SchedulerTask`、`ResolvedSchedulerTask`，以及提示词的 `MessageSourceMap` 声明 |
 | [`src/time.ts`](src/time.ts) | `HH:MM:SS` 与时区校验、日历归一化，以及下一到点解析 |
 | [`src/config.ts`](src/config.ts) | 结构与引用的分野、`SchedulerConfigError`，以及挂载集合 |
-| [`src/settings.ts`](src/settings.ts) | `scheduler` 设置命名空间 schema 与无人值守预选筛选 |
+| [`src/settings.ts`](src/settings.ts) | 与设置表单共享的任务字段 schema，以及无人值守预选筛选 |
 | [`src/session.ts`](src/session.ts) | 单次到点的会话事务：创建、绑定、配置、提示、排空、释放 |
 | [`src/runtime.ts`](src/runtime.ts) | `TaskRuntime`：有上限、可再分段的定时器与唯一的进行中运行 |
 
@@ -117,7 +117,7 @@ kind: "package-reference"
 
 `apply` 先校验一次配置的结构，随后解析当前任务列表并替换已挂载集合。替换的顺序保证任一到点都不会被漏掉或重复挂载：先构造新的运行时，再释放旧的，最后才启动新集合。代次计数器会使被取代的解析——即在后续变更到达之后才完成的 `resolve`——丢弃自身结果，而不是复活一份过期调度。
 
-当存在 settings 服务时，插件把 `scheduler` 命名空间作为可选消费者挂载：组合 `config` 是基础层，用户保存的列表会替换它，且每次提交的变更都无需重启即可重新挂载。该分区的写入路径复用 `validateTaskStructure`，因此结构上不可能成立的任务会在写入处被拒绝，而不是被挂载后忽略。
+`Config.tasks` 是易变的，因此 `scheduler` Loader 条目既承载设置分区，也承载组合基础层：用户保存的列表会替换随包提供的列表，Loader 会把仅含易变字段的变更提交进运行中的配置并广播它，从而无需重启即可重新挂载每个任务。本包自带页面，因此退出 Loader 生成的表单。初次加载与每次重新挂载都会调用 `validateTaskStructure`，因此无法表示可运行到点的已存储列表会被记录到进程日志，先前的挂载集合继续运行。
 
 ### 时间解析
 

@@ -106,7 +106,7 @@ async function releaseRun(
  * turn's transcript is durable and is what a reader inspects.
  * @param ctx - Runtime context that owns the created Agent.
  * @param task - The validated task this occurrence belongs to.
- * @param occurrenceAt - RFC 3339 UTC instant the occurrence was armed for, recorded as provenance.
+ * @param occurrenceAt - RFC 3339 UTC instant the occurrence was armed for, recorded as the message's scheduler metadata.
  * @param signal - Registration lifetime cancellation; aborts creation and the run.
  * @returns The run's terminal outcome.
  */
