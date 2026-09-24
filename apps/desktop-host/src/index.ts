@@ -3,7 +3,7 @@
 import { delimiter, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { inspect } from 'node:util'
-import { loadLayeredEnv, loadOverlayPatches, loadProfileDirectory } from '@deepseek-ai/dsh-app-boot'
+import { loadLayeredEnv, loadProfileDirectory } from '@deepseek-ai/dsh-app-boot'
 import { runProfile } from '@deepseek-ai/dsh/profile-boot'
 import type {} from '@deepseek-ai/dsh-client-connection'
 import type {} from '@deepseek-ai/dsh-host-webserver'
@@ -28,7 +28,7 @@ async function main(): Promise<void> {
     environment: loadLayeredEnv('dsh'),
     profile: 'desktop',
     resolvedProfile: { profile, installAnchor },
-    patchFiles: loadOverlayPatches('dsh desktop', DESKTOP_PATCH),
+    patchFiles: [DESKTOP_PATCH],
     args: ['--no-open', '--port', '19387'],
     ...(process.argv[5] === undefined ? {} : {
       packageManager: {

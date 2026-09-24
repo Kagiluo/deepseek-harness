@@ -337,7 +337,6 @@
     { "path": "./packages/subprocess/win32-process" },
     { "path": "./packages/shell/shell" },
     { "path": "./packages/terminal/terminal" },
-    { "path": "./packages/api/terminal-controller" },
     { "path": "./packages/terminal/terminal-bash" },
     { "path": "./packages/shell/tool-bash-persistent" },
     { "path": "./packages/shell/tool-pwsh-persistent" },
