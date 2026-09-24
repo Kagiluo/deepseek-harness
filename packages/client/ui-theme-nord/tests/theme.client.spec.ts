@@ -60,7 +60,9 @@ function formStub(initial: Partial<NordSection> = {}): FormStub {
     const pair: ColorRole = leaf === 'light'
       ? { ...value[role], light: next as string }
       : { ...value[role], dark: next as string }
-    const stored: ColorRole = leaf === 'light'
+    // The stored user layer carries only the leaf the edit touched, so a role
+    // the user has never edited spreads to nothing.
+    const stored: Partial<ColorRole> = leaf === 'light'
       ? { ...user[role] as ColorRole | undefined, light: next as string }
       : { ...user[role] as ColorRole | undefined, dark: next as string }
     stage({ ...value, [role]: pair }, { ...user, [role]: stored })

@@ -37,7 +37,9 @@ const MEDIA_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif
  * One palette role's schema, defaulting to the North value.
  *
  * The role object is volatile as a whole, which makes both `light` and `dark`
- * editable through the plugin's settings form without remounting.
+ * editable through the plugin's settings form without remounting. It also
+ * defaults as a whole, so a resolved role is always the value the palette
+ * readers index rather than `undefined`.
  * @param role - the default value in each scheme.
  * @returns the role's settings schema.
  */
@@ -45,7 +47,7 @@ function roleSchema(role: ColorRole) {
   return z.object({
     light: z.string().default(role.light),
     dark: z.string().default(role.dark),
-  }).volatile()
+  }).default(role).volatile()
 }
 
 /** The Config the Loader parses; every user-editable field is a live reference. */
