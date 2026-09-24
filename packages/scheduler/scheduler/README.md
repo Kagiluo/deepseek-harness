@@ -145,7 +145,7 @@ Read these pages when the package-level contract is not enough.
 - [Scheduled tasks settings page](../../client/ui-scheduler/README.md) — the GUI that authors the task list this plugin arms.
 - [Session-local Schedule](../../schedule/schedule/README.md) — the sibling package for reminders delivered into one live conversation rather than a new Session.
 - [Generated configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-scheduler) — the complete `tasks` schema this plugin receives.
-- [Agent presets](../../preset/agent-presets/README.md) — the roster a task's `agentPreset` names.
+- [Agent presets](../../preset/agent-preset-registry/README.md) — the roster a task's `agentPreset` names.
 - [Permission presets](../../interaction/permission-presets/README.md) — the presets whose approval policy decides which tasks can run unattended.
 - [Workspace registry](../../workspace/workspace/README.md) — the directories a task's `workspacePath` resolves against.
 - [Scheduler subsystem](../../../docs/subsystems/scheduler.md) — the shared types and the arming-to-release timing contract.

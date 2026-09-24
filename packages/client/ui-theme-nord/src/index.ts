@@ -18,8 +18,9 @@ import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 // Type-only: brings the `settings` service declaration (ctx.settings).
 import type {} from '@deepseek-ai/dsh-settings'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
-import { Config, NORD_SETTINGS_NAMESPACE } from './settings.ts'
-import type { NordSection } from './section.ts'
+import z from '@deepseek-ai/schemastery'
+import { DEFAULT_PALETTE } from './palette.ts'
+import { DEFAULT_WALLPAPER_OPACITY, type NordSection } from './section.ts'
 import type { StoredWallpaper, WallpaperId, WallpaperUpload } from './types.ts'
 
 /** Cap on one stored image, so an upload cannot be turned into a disk-filling write. */
@@ -30,6 +31,38 @@ const WALLPAPER_DIRECTORY = 'theme-wallpaper'
 
 /** Media types the store accepts. */
 const MEDIA_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/avif'])
+
+/** Settings namespace this plugin owns; the browser half binds the same name. */
+const NORD_SETTINGS_NAMESPACE = 'theme-nord'
+
+/**
+ * One palette role's schema, defaulting to the North value.
+ * @param role - the default value in each scheme.
+ * @returns the role's settings schema.
+ */
+function roleSchema(role: { readonly light: string; readonly dark: string }) {
+  return z.object({
+    light: z.string().default(role.light),
+    dark: z.string().default(role.dark),
+  })
+}
+
+/** The settings schema, whose defaults come from the palette defaults. */
+export const Config: z<NordSection> = z.object({
+  background: roleSchema(DEFAULT_PALETTE.background),
+  surface: roleSchema(DEFAULT_PALETTE.surface),
+  surfaceRaised: roleSchema(DEFAULT_PALETTE.surfaceRaised),
+  surfaceDeep: roleSchema(DEFAULT_PALETTE.surfaceDeep),
+  text: roleSchema(DEFAULT_PALETTE.text),
+  accent: roleSchema(DEFAULT_PALETTE.accent),
+  accentAlt: roleSchema(DEFAULT_PALETTE.accentAlt),
+  danger: roleSchema(DEFAULT_PALETTE.danger),
+  success: roleSchema(DEFAULT_PALETTE.success),
+  warning: roleSchema(DEFAULT_PALETTE.warning),
+  wallpaper: z.string().default(''),
+  wallpaperMediaType: z.string().default(''),
+  wallpaperOpacity: z.number().min(0).max(100).default(DEFAULT_WALLPAPER_OPACITY),
+})
 
 /**
  * Host half: the palette settings section plus the background-image store.

@@ -2,9 +2,8 @@
  * The settings section this plugin owns, as both halves read it: the ten
  * palette roles plus the background-image fields.
  *
- * It lives beside rather than inside `settings.ts` because the browser half
- * needs the same field types and must not reach the schema library that module
- * imports.
+ * It lives apart from the plugin entry because the browser half needs the same
+ * field types and must not reach the schema library that file imports.
  */
 
 import type { Palette } from './palette.ts'

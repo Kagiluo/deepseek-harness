@@ -7,7 +7,6 @@
   },
   "files": [
     "src/index.ts",
-    "src/settings.ts",
     "src/palette.ts",
     "src/section.ts",
     "src/types.ts"

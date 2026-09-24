@@ -145,7 +145,7 @@ Agent 或插件释放会取消定时器，并等待进行中的运行达到静�
 - [定时任务设置页](../../client/ui-scheduler/README.zh.md)——编写本插件所挂载任务列表的 GUI。
 - [会话内 Schedule](../../schedule/schedule/README.zh.md)——同类包，把提醒送入一个活动会话而不是新建会话。
 - [生成的配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-scheduler)——本插件接收的完整 `tasks` schema。
-- [Agent 预设](../../preset/agent-presets/README.zh.md)——任务的 `agentPreset` 所指名的名单。
+- [Agent 预设](../../preset/agent-preset-registry/README.zh.md)——任务的 `agentPreset` 所指名的名单。
 - [权限预设](../../interaction/permission-presets/README.zh.md)——其审批策略决定哪些任务可无人值守运行的预设。
 - [Workspace 注册表](../../workspace/workspace/README.zh.md)——任务的 `workspacePath` 所解析的目录。
 - [Scheduler 子系统](../../../docs/subsystems/scheduler.zh.md)——共享类型与从挂载到释放的时序约定。

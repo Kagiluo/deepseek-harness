@@ -11,9 +11,8 @@ import { Context } from '@deepseek-ai/cordis'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { DEFAULT_PALETTE, ROLES } from '../src/palette.ts'
 import { DEFAULT_WALLPAPER_OPACITY, type NordSection } from '../src/section.ts'
-import { Config } from '../src/settings.ts'
 import type { WallpaperId } from '../src/types.ts'
-import ThemeWallpaperGateway from '../src/index.ts'
+import ThemeWallpaperGateway, { Config } from '../src/index.ts'
 
 /** Stand-in image bytes; the store never decodes what it writes. */
 const BYTES = Buffer.from('nord-wallpaper-bytes')
