@@ -19,6 +19,11 @@ rem  The application identifier defaults to com.deepseek.harness. Set
 rem  DSH_DESKTOP_APP_ID before running to replace it, and set PYTHON when
 rem  Python is absent from PATH.
 rem
+rem  The build bridges this machine's proxy into its child processes, since
+rem  Node's fetch ignores the WinINET setting that other Windows tools follow.
+rem  Only the single host:port registry form is adopted; set HTTP_PROXY and
+rem  HTTPS_PROXY before running for per-protocol lists and PAC scripts.
+rem
 rem  The equivalent PowerShell entry point is scripts/build-windows.ps1.
 rem ============================================================================
 
@@ -64,9 +69,19 @@ set "TARGET=%REPO%\apps\desktop\.desktop-build\targets\win-x64"
 set "ARTIFACTS=%TARGET%\unsigned-artifacts"
 set "APP=%ARTIFACTS%\win-unpacked\DeepSeek Harness.exe"
 
+if not defined HTTP_PROXY (
+  for /f "tokens=2,*" %%A in ('reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings" /v ProxyServer 2^>nul ^| findstr /r /c:"REG_SZ[ ]*[^=;]*:[0-9][0-9]*$"') do set "HTTP_PROXY=http://%%B"
+)
+if not defined HTTP_PROXY goto :proxy_bridged
+if not defined HTTPS_PROXY set "HTTPS_PROXY=%HTTP_PROXY%"
+set "NODE_USE_ENV_PROXY=1"
+if defined NO_PROXY (set "NO_PROXY=localhost,127.0.0.1,::1,%NO_PROXY%") else (set "NO_PROXY=localhost,127.0.0.1,::1")
+:proxy_bridged
+
 echo Repository  : %REPO%
 echo Application : %DSH_DESKTOP_APP_ID%
 if defined PYTHON echo Python      : %PYTHON%
+if defined HTTP_PROXY echo Proxy       : %HTTP_PROXY%
 echo.
 
 if "%CLEAN%"=="1" (

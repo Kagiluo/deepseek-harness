@@ -281,21 +281,21 @@ The Windows uninstaller removes the Electron user-data directory (browser storag
 
 Use `node apps/desktop/scripts/test-windows-installer.mjs --uninstall-only --compile-only` to compile isolated English and Chinese fixtures with a per-run scoped package name. Omit `--compile-only` to run the native remover regression and the interactive, silent, `--updated`, `/KEEP_APP_DATA` and `DSH_HOME`-inside-Electron-data checks against seeded data. Compilation does not establish installed-uninstall behavior.
 
-`build-windows.ps1` wraps that command with the host requirements it would otherwise fail on: it validates the Windows x64 build host, sets `DSH_DESKTOP_APP_ID`, locates Python, and reports the artifacts. It prepends neither signing material nor an update origin, so it produces the same unsigned installer.
+`build-windows.ps1` wraps that command with the host requirements it would otherwise fail on: it validates the Windows x64 build host, sets `DSH_DESKTOP_APP_ID`, locates Python, and reports the artifacts. It prepends neither signing material nor an update origin, so it produces the same unsigned installer. It also bridges the proxy configured for the current user into the build's child processes: the bundled Python runtime archive is hosted where Node's fetch arrives only through `NODE_USE_ENV_PROXY` and `HTTP(S)_PROXY`, and loopback traffic stays direct.
 
 ```powershell
-pwsh -NoProfile -File apps/desktop/scripts/build-windows.ps1
+powershell -NoProfile -File apps/desktop/scripts/build-windows.ps1
 ```
 
-`-Clean` removes the target's build state while keeping the verified download cache, `-Install` runs the installer silently, and `-Run` starts the unpacked application. `-AppId` and `-Python` replace the application identifier and Python executable.
+`-Clean` removes the target's build state while keeping the verified download cache, `-Install` runs the installer silently, and `-Run` starts the unpacked application. `-AppId` and `-Python` replace the application identifier and Python executable. `-Proxy` replaces the bridged proxy with an explicit HTTP origin and `-NoProxy` skips bridging; bridging relies on `NODE_USE_ENV_PROXY`, which Node reads from version 24.
 
-`build-windows.bat` is the same entry point for callers that cannot invoke PowerShell. It runs the identical pipeline and reports the same artifacts; its output stays ASCII so it reads correctly on a non-UTF-8 console code page. It pauses before exiting when Explorer launched it, so a double-click keeps its result on screen.
+`build-windows.bat` is the same entry point for callers that cannot invoke PowerShell. It runs the identical pipeline and reports the same artifacts; its output stays ASCII so it reads correctly on a non-UTF-8 console code page. It pauses before exiting when Explorer launched it, so a double-click keeps its result on screen. It bridges the same proxy, adopting only the single `host:port` registry form; set `HTTP_PROXY` and `HTTPS_PROXY` before running for per-protocol lists and PAC scripts.
 
 ```bat
 apps\desktop\scripts\build-windows.bat clean run
 ```
 
-Arguments replace the PowerShell switches: `clean` matches `-Clean` and `run` matches `-Run`. Set `DSH_DESKTOP_APP_ID` and `PYTHON` in the environment before running; the batch script has no `-AppId` or `-Python` arguments.
+Arguments replace the PowerShell switches: `clean` matches `-Clean` and `run` matches `-Run`. Set `DSH_DESKTOP_APP_ID`, `PYTHON`, and any explicit `HTTP_PROXY` and `HTTPS_PROXY` in the environment before running; the batch script has no `-AppId`, `-Python`, or `-Proxy` arguments.
 
 ### Windows EV signing
 

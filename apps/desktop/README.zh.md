@@ -281,21 +281,21 @@ Windows 卸载程序会随应用一起删除 Electron 用户数据目录（`%APP
 
 使用 `node apps/desktop/scripts/test-windows-installer.mjs --uninstall-only --compile-only` 以每次运行唯一的带作用域包名编译独立的中英文夹具。省略 `--compile-only` 可对预置数据运行原生删除器回归，以及交互、静默、`--updated`、`/KEEP_APP_DATA` 和 `DSH_HOME` 位于 Electron 数据内的检查。编译本身不能证明已安装卸载行为。
 
-`build-windows.ps1` 在该命令之上补齐其前提条件：校验 Windows x64 构建宿主、设置 `DSH_DESKTOP_APP_ID`、定位 Python，并报告产物。它不注入签名材料或更新源，因此产出同样的未签名安装包。
+`build-windows.ps1` 在该命令之上补齐其前提条件：校验 Windows x64 构建宿主、设置 `DSH_DESKTOP_APP_ID`、定位 Python，并报告产物。它不注入签名材料或更新源，因此产出同样的未签名安装包。它还会把当前用户配置的代理桥接进构建的子进程：内置 Python 运行时归档所在的主机，Node 的 fetch 只能经 `NODE_USE_ENV_PROXY` 与 `HTTP(S)_PROXY` 访问，而 loopback 流量保持直连。
 
 ```powershell
-pwsh -NoProfile -File apps/desktop/scripts/build-windows.ps1
+powershell -NoProfile -File apps/desktop/scripts/build-windows.ps1
 ```
 
-`-Clean` 删除目标的构建状态但保留已验证的下载缓存，`-Install` 静默运行安装包，`-Run` 启动解包后的应用。`-AppId` 与 `-Python` 分别替换应用标识符和 Python 可执行文件。
+`-Clean` 删除目标的构建状态但保留已验证的下载缓存，`-Install` 静默运行安装包，`-Run` 启动解包后的应用。`-AppId` 与 `-Python` 分别替换应用标识符和 Python 可执行文件。`-Proxy` 用显式 HTTP 源替换桥接的代理，`-NoProxy` 跳过桥接；桥接依赖 `NODE_USE_ENV_PROXY`，Node 自 24 版起读取该变量。
 
-`build-windows.bat` 是无法调用 PowerShell 时的同一入口。它运行完全相同的管线并报告相同产物；其输出保持 ASCII，以便在非 UTF-8 控制台代码页下正确显示。由资源管理器启动时，它会在退出前暂停，使双击后仍能看到结果。
+`build-windows.bat` 是无法调用 PowerShell 时的同一入口。它运行完全相同的管线并报告相同产物；其输出保持 ASCII，以便在非 UTF-8 控制台代码页下正确显示。由资源管理器启动时，它会在退出前暂停，使双击后仍能看到结果。它桥接同一个代理，仅采用单一的 `host:port` 注册表形式；遇按协议列出或 PAC 脚本时，请在运行前设置 `HTTP_PROXY` 与 `HTTPS_PROXY`。
 
 ```bat
 apps\desktop\scripts\build-windows.bat clean run
 ```
 
-参数对应 PowerShell 开关：`clean` 等价于 `-Clean`，`run` 等价于 `-Run`。运行前请在环境中设置 `DSH_DESKTOP_APP_ID` 与 `PYTHON`；批处理脚本没有 `-AppId` 和 `-Python` 参数。
+参数对应 PowerShell 开关：`clean` 等价于 `-Clean`，`run` 等价于 `-Run`。运行前请在环境中设置 `DSH_DESKTOP_APP_ID`、`PYTHON`，以及任何显式的 `HTTP_PROXY` 与 `HTTPS_PROXY`；批处理脚本没有 `-AppId`、`-Python`、`-Proxy` 参数。
 
 ### Windows EV 签名
 
